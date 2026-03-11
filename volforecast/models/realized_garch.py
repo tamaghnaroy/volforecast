@@ -128,6 +128,9 @@ class RealizedGARCHForecaster(BaseForecaster):
         self._returns = self._returns[:min_len]
         self._log_rv = self._log_rv[:min_len]
 
+        if min_len == 0:
+            raise ValueError("returns and realized RV must contain at least one observation")
+
         # MLE estimation
         def neg_loglik(params):
             omega, beta, gamma, xi, phi, tau1, tau2, log_sig_u2 = params
@@ -222,6 +225,10 @@ class RealizedGARCHForecaster(BaseForecaster):
 
         new_r = np.asarray(new_returns, dtype=np.float64)
         new_rv = np.asarray(new_realized["RV"], dtype=np.float64)
+
+        if len(new_r) != len(new_rv):
+            raise ValueError("new_returns and new_realized['RV'] must have the same length")
+
         new_log_rv = np.log(np.maximum(new_rv, 1e-20))
 
         omega = self._params["omega"]
