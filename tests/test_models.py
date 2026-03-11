@@ -567,6 +567,20 @@ class TestRealizedGARCHExtended:
         with pytest.raises(ValueError):
             model.fit(garch_data.daily_returns[:500])
 
+    def test_fit_with_empty_inputs_raises(self):
+        model = RealizedGARCHForecaster()
+        with pytest.raises(ValueError, match="at least one observation"):
+            model.fit(np.array([]), realized_measures={"RV": np.array([])})
+
+    def test_update_mismatched_lengths_raises(self, garch_data, rv_series):
+        model = RealizedGARCHForecaster()
+        model.fit(garch_data.daily_returns[:500],
+                  realized_measures={"RV": rv_series[:500]})
+        with pytest.raises(ValueError, match="same length"):
+            model.update(garch_data.daily_returns[500:503],
+                         new_realized={"RV": rv_series[500:502]})
+
+
     def test_get_params(self, garch_data, rv_series):
         model = RealizedGARCHForecaster()
         model.fit(garch_data.daily_returns[:500],

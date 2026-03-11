@@ -35,19 +35,3 @@ Implemented combiners in `volforecast/combination`:
 - [Issue 08: Add quantile-native volatility methods (CAViaR)](./issue-08-caviar.md)
 - [Issue 09: Add production ML wrappers promised by docs (LSTM/Transformer/RF)](./issue-09-ml-wrappers.md)
 
-
-## GitHub issue creation
-
-To create one GitHub issue for each draft issue in this folder, use:
-
-```bash
-python scripts/create_github_issues.py --repo <owner/repo> --token $GITHUB_TOKEN
-```
-
-Dry run:
-
-```bash
-python scripts/create_github_issues.py --repo <owner/repo> --dry-run
-```
-
-Issue payload source: `docs/issues/github_issues.json`.
