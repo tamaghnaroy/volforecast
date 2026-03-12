@@ -19,11 +19,10 @@ from numpy.typing import NDArray
 
 from volforecast.core.base import BaseForecaster, ForecastResult
 from volforecast.realized.measures import (
-    realized_variance,
-    bipower_variation,
-    realized_semivariance,
+    realized_variance_series,
+    bipower_variation_series,
+    realized_semivariance_series,
 )
-from volforecast.realized.jumps import jump_decomposition
 from volforecast.evaluation.losses import mse_loss, qlike_loss
 from volforecast.evaluation.tests import diebold_mariano_test, mincer_zarnowitz_test
 from volforecast.evaluation.proxy import proxy_noise_correction
@@ -136,11 +135,9 @@ class BenchmarkRunner:
         n_oos = T - self.window_size
 
         # Pre-compute realized measures for all days
-        rv = np.array([realized_variance(intraday_returns[t]) for t in range(T)])
-        bv = np.array([bipower_variation(intraday_returns[t]) for t in range(T)])
-        rsv = [realized_semivariance(intraday_returns[t]) for t in range(T)]
-        rs_pos = np.array([r[0] for r in rsv])
-        rs_neg = np.array([r[1] for r in rsv])
+        rv = realized_variance_series(intraday_returns)
+        bv = bipower_variation_series(intraday_returns)
+        rs_pos, rs_neg = realized_semivariance_series(intraday_returns)
         cv = np.minimum(bv, rv)
         jv = np.maximum(rv - bv, 0.0)
 
