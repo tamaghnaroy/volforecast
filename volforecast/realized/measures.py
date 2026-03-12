@@ -132,6 +132,39 @@ def bipower_variation(intraday_returns: NDArray[np.float64]) -> float:
     return _bv_core(np.ascontiguousarray(intraday_returns, dtype=np.float64))
 
 
+def bipower_variation_series(
+    intraday_matrix: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """Compute BV for each row (day) of an intraday return matrix.
+
+    Parameters
+    ----------
+    intraday_matrix : array, shape (T, n)
+        Each row is one day of intraday returns.
+
+    Returns
+    -------
+    array, shape (T,)
+    """
+    return _bv_series_core(np.ascontiguousarray(intraday_matrix, dtype=np.float64))
+
+
+@njit(cache=True, parallel=True)
+def _bv_series_core(mat: NDArray[np.float64]) -> NDArray[np.float64]:
+    T = mat.shape[0]
+    n = mat.shape[1]
+    out = np.empty(T, dtype=np.float64)
+    for t in prange(T):
+        if n < 2:
+            out[t] = 0.0
+            continue
+        s = 0.0
+        for i in range(1, n):
+            s += np.abs(mat[t, i]) * np.abs(mat[t, i - 1])
+        out[t] = s * (n / (n - 1)) / (_MU1 ** 2)
+    return out
+
+
 # ═══════════════════════════════════════════════════
 # Median Realized Variance (MedRV)
 # ═══════════════════════════════════════════════════
@@ -439,3 +472,43 @@ def realized_semivariance(
     """
     r = np.ascontiguousarray(intraday_returns, dtype=np.float64)
     return _rsv_core(r)
+
+
+def realized_semivariance_series(
+    intraday_matrix: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Compute semi-variances for each row (day) of an intraday matrix.
+
+    Parameters
+    ----------
+    intraday_matrix : array, shape (T, n)
+        Each row is one day of intraday returns.
+
+    Returns
+    -------
+    tuple of arrays, shape (T,)
+        (RS_positive, RS_negative) for each day.
+    """
+    return _rsv_series_core(np.ascontiguousarray(intraday_matrix, dtype=np.float64))
+
+
+@njit(cache=True, parallel=True)
+def _rsv_series_core(
+    mat: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    T = mat.shape[0]
+    n = mat.shape[1]
+    rs_pos = np.empty(T, dtype=np.float64)
+    rs_neg = np.empty(T, dtype=np.float64)
+    for t in prange(T):
+        p = 0.0
+        ng = 0.0
+        for i in range(n):
+            r = mat[t, i]
+            if r > 0.0:
+                p += r * r
+            else:
+                ng += r * r
+        rs_pos[t] = p
+        rs_neg[t] = ng
+    return rs_pos, rs_neg

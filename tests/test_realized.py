@@ -21,6 +21,8 @@ from volforecast.realized.measures import (
     pre_averaging,
     realized_semivariance,
     realized_variance_series,
+    bipower_variation_series,
+    realized_semivariance_series,
 )
 from volforecast.realized.jumps import (
     bns_jump_test,
@@ -121,6 +123,14 @@ class TestBipowerVariation:
         bv = bipower_variation(np.array([0.01, -0.01]))
         assert bv > 0.0
 
+    def test_series(self):
+        rng = np.random.default_rng(123)
+        mat = rng.normal(0, 0.01, size=(10, 78))
+        bv_series = bipower_variation_series(mat)
+        assert bv_series.shape == (10,)
+        for t in range(10):
+            assert np.isclose(bv_series[t], bipower_variation(mat[t]))
+
 
 # ─── MedRV Tests ───
 
@@ -202,6 +212,17 @@ class TestSemiVariance:
         rs_pos, rs_neg = realized_semivariance(gaussian_returns)
         assert rs_pos >= 0.0
         assert rs_neg >= 0.0
+
+    def test_series(self):
+        rng = np.random.default_rng(7)
+        mat = rng.normal(0, 0.01, size=(12, 78))
+        rs_pos_series, rs_neg_series = realized_semivariance_series(mat)
+        assert rs_pos_series.shape == (12,)
+        assert rs_neg_series.shape == (12,)
+        for t in range(12):
+            rs_pos, rs_neg = realized_semivariance(mat[t])
+            assert np.isclose(rs_pos_series[t], rs_pos)
+            assert np.isclose(rs_neg_series[t], rs_neg)
 
 
 # ─── Jump Tests ───
