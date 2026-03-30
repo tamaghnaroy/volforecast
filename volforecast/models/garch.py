@@ -150,6 +150,80 @@ def cgarch11_filter(
     return sigma2
 
 
+@njit(cache=True)
+def arch_q_filter(
+    returns: NDArray[np.float64],
+    omega: float,
+    alphas: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    """ARCH(q) conditional variance filter.
+
+    sigma2_t = omega + sum_{i=1}^{q} alpha_i * r_{t-i}^2
+
+    Parameters
+    ----------
+    returns : array, shape (T,)
+    omega : float
+        Intercept.
+    alphas : array, shape (q,)
+        ARCH lag coefficients.
+
+    Returns
+    -------
+    sigma2 : array, shape (T,)
+        Conditional variance series.
+    """
+    T = returns.shape[0]
+    q = alphas.shape[0]
+    sigma2 = np.empty(T, dtype=np.float64)
+    # Initialize at unconditional variance
+    alpha_sum = 0.0
+    for i in range(q):
+        alpha_sum += alphas[i]
+    unc_var = omega / max(1.0 - alpha_sum, 1e-8)
+    for t in range(T):
+        s = omega
+        for i in range(q):
+            if t - 1 - i >= 0:
+                s += alphas[i] * returns[t - 1 - i] ** 2
+            else:
+                s += alphas[i] * unc_var
+        sigma2[t] = max(s, 1e-20)
+    return sigma2
+
+
+@njit(cache=True)
+def ewma_filter(
+    returns: NDArray[np.float64],
+    lambda_: float,
+) -> NDArray[np.float64]:
+    """EWMA / RiskMetrics conditional variance filter.
+
+    sigma2_t = lambda * sigma2_{t-1} + (1 - lambda) * r_{t-1}^2
+
+    Parameters
+    ----------
+    returns : array, shape (T,)
+    lambda_ : float
+        Decay factor in (0, 1).
+
+    Returns
+    -------
+    sigma2 : array, shape (T,)
+        Conditional variance series.
+    """
+    T = returns.shape[0]
+    sigma2 = np.empty(T, dtype=np.float64)
+    # Initialize at sample variance
+    var_sum = 0.0
+    for i in range(T):
+        var_sum += returns[i] ** 2
+    sigma2[0] = var_sum / T
+    for t in range(1, T):
+        sigma2[t] = lambda_ * sigma2[t - 1] + (1.0 - lambda_) * returns[t - 1] ** 2
+    return sigma2
+
+
 # ═══════════════════════════════════════════════════
 # GARCH Forecaster (wraps arch library for estimation)
 # ═══════════════════════════════════════════════════
@@ -231,13 +305,10 @@ class GARCHForecaster(BaseForecaster):
         unc_var = omega / max(1.0 - persistence, 1e-8)
 
         forecasts = np.empty(horizon, dtype=np.float64)
-        sig2_h = last_sigma2
-        for h in range(horizon):
-            if h == 0:
-                sig2_h = omega + alpha * self._returns[-1] ** 2 + beta * last_sigma2
-            else:
-                sig2_h = unc_var + persistence ** h * (sig2_h - unc_var)
-            forecasts[h] = sig2_h
+        sig2_1 = omega + alpha * self._returns[-1] ** 2 + beta * last_sigma2
+        forecasts[0] = sig2_1
+        for h in range(1, horizon):
+            forecasts[h] = unc_var + persistence ** h * (sig2_1 - unc_var)
 
         return ForecastResult(
             point=forecasts,
@@ -263,10 +334,16 @@ class GARCHForecaster(BaseForecaster):
         alpha = self._params["alpha"]
         beta = self._params["beta"]
 
+        new_sig2_list = []
+        ret_list = list(self._returns)
+        sig2_list = list(self._sigma2)
         for r in new_r:
-            new_sig2 = omega + alpha * self._returns[-1] ** 2 + beta * self._sigma2[-1]
-            self._returns = np.append(self._returns, r)
-            self._sigma2 = np.append(self._sigma2, new_sig2)
+            new_sig2 = omega + alpha * ret_list[-1] ** 2 + beta * sig2_list[-1]
+            ret_list.append(r)
+            sig2_list.append(new_sig2)
+            new_sig2_list.append(new_sig2)
+        self._returns = np.array(ret_list, dtype=np.float64)
+        self._sigma2 = np.array(sig2_list, dtype=np.float64)
 
     def get_params(self) -> dict[str, Any]:
         return self._params.copy()
@@ -500,11 +577,15 @@ class GJRGARCHForecaster(BaseForecaster):
         gamma = self._params["gamma"]
         beta = self._params["beta"]
 
+        ret_list = list(self._returns)
+        sig2_list = list(self._sigma2)
         for r in new_r:
-            leverage = gamma if self._returns[-1] < 0.0 else 0.0
-            new_sig2 = omega + (alpha + leverage) * self._returns[-1] ** 2 + beta * self._sigma2[-1]
-            self._returns = np.append(self._returns, r)
-            self._sigma2 = np.append(self._sigma2, new_sig2)
+            leverage = gamma if ret_list[-1] < 0.0 else 0.0
+            new_sig2 = omega + (alpha + leverage) * ret_list[-1] ** 2 + beta * sig2_list[-1]
+            ret_list.append(r)
+            sig2_list.append(new_sig2)
+        self._returns = np.array(ret_list, dtype=np.float64)
+        self._sigma2 = np.array(sig2_list, dtype=np.float64)
 
     def get_params(self) -> dict[str, Any]:
         return self._params.copy()
@@ -601,6 +682,15 @@ class APARCHForecaster(BaseForecaster):
         self._returns = np.concatenate([
             self._returns, np.asarray(new_returns, dtype=np.float64)
         ])
+        # Re-filter conditional variance with fixed params on extended series
+        from arch import arch_model
+        r_scaled = self._returns * 100.0
+        am = arch_model(r_scaled, vol="APARCH", p=1, o=1, q=1, dist=self.dist, mean="Zero")
+        params_array = np.array(list(self._params.values()))
+        res = am.fix(params_array)
+        self._arch_result = res
+        cv = res.conditional_volatility
+        self._sigma2 = np.asarray(cv if isinstance(cv, np.ndarray) else cv.values, dtype=np.float64) ** 2 / 1e4
 
     def get_params(self) -> dict[str, Any]:
         return self._params.copy()
@@ -708,6 +798,256 @@ class CGARCHForecaster(BaseForecaster):
         self._sigma2 = cgarch11_filter(
             self._returns, **{k: v for k, v in self._params.items()}
         )
+
+    def get_params(self) -> dict[str, Any]:
+        return self._params.copy()
+
+
+# ═══════════════════════════════════════════════════
+# ARCH(q) Forecaster — Engle (1982)
+# ═══════════════════════════════════════════════════
+
+class ARCHForecaster(BaseForecaster):
+    """ARCH(q) forecaster (Engle, 1982).
+
+    Pure autoregressive conditional heteroskedasticity model with *q* lags.
+    No GARCH persistence term — serves as a foundational baseline.
+
+    Parameters
+    ----------
+    q : int
+        Number of ARCH lags (default 1).
+    dist : str
+        Error distribution for MLE: "normal", "t", "skewt", "ged".
+    """
+
+    def __init__(self, q: int = 1, dist: str = "normal") -> None:
+        if q < 1:
+            raise ValueError("q must be >= 1")
+        self.q = q
+        self.dist = dist
+        self._params: dict[str, float] = {}
+        self._returns: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._sigma2: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._alphas: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._fitted = False
+
+    @property
+    def model_spec(self) -> ModelSpec:
+        return ModelSpec(
+            name=f"ARCH({self.q})",
+            abbreviation="ARCH",
+            family="GARCH",
+            target=VolatilityTarget.CONDITIONAL_VARIANCE,
+            assumptions=("stationary returns", "no persistence term", "finite 4th moment"),
+            complexity="O(T) MLE",
+            reference="Engle (1982), Econometrica",
+            extends=(),
+        )
+
+    def fit(
+        self,
+        returns: NDArray[np.float64],
+        realized_measures: Optional[dict[str, NDArray[np.float64]]] = None,
+        **kwargs: Any,
+    ) -> "ARCHForecaster":
+        from arch import arch_model
+
+        self._returns = np.asarray(returns, dtype=np.float64)
+        r_scaled = self._returns * 100.0  # arch convention: percentage returns
+
+        am = arch_model(r_scaled, vol="ARCH", p=self.q, dist=self.dist, mean="Zero")
+        res = am.fit(disp="off", **kwargs)
+
+        # Extract and rescale parameters
+        self._params = {"omega": res.params["omega"] / 1e4}
+        alphas = []
+        for i in range(1, self.q + 1):
+            key = f"alpha[{i}]"
+            self._params[key] = res.params[key]
+            alphas.append(res.params[key])
+        self._alphas = np.array(alphas, dtype=np.float64)
+        self._arch_result = res
+
+        # Run Numba filter for internal state
+        self._sigma2 = arch_q_filter(
+            self._returns, self._params["omega"], self._alphas,
+        )
+        self._fitted = True
+        return self
+
+    def predict(self, horizon: int = 1, **kwargs: Any) -> ForecastResult:
+        if not self._fitted:
+            raise RuntimeError("Model not fitted. Call fit() first.")
+
+        omega = self._params["omega"]
+        alphas = self._alphas
+        q = self.q
+        alpha_sum = float(np.sum(alphas))
+        unc_var = omega / max(1.0 - alpha_sum, 1e-8)
+
+        # Build extended squared-return / forecast buffer
+        # For h-step-ahead, past squared returns are known; future ones
+        # are replaced by their conditional expectation (the forecast itself).
+        past_r2 = self._returns ** 2
+        buf_len = len(past_r2) + horizon
+        buf = np.empty(buf_len, dtype=np.float64)
+        buf[:len(past_r2)] = past_r2
+
+        forecasts = np.empty(horizon, dtype=np.float64)
+        T = len(past_r2)
+        for h in range(horizon):
+            s = omega
+            for i in range(q):
+                idx = T + h - 1 - i
+                if idx >= 0:
+                    s += alphas[i] * buf[idx]
+                else:
+                    s += alphas[i] * unc_var
+            forecasts[h] = s
+            buf[T + h] = s  # E[r_{T+h+1}^2 | F_T] = sigma2_{T+h+1}
+
+        return ForecastResult(
+            point=forecasts,
+            target_spec=TargetSpec(
+                target=VolatilityTarget.CONDITIONAL_VARIANCE,
+                horizon=horizon,
+            ),
+            model_name=f"ARCH({self.q})",
+            metadata={"params": self._params.copy()},
+        )
+
+    def update(
+        self,
+        new_returns: NDArray[np.float64],
+        new_realized: Optional[dict[str, NDArray[np.float64]]] = None,
+        **kwargs: Any,
+    ) -> None:
+        if not self._fitted:
+            raise RuntimeError("Model not fitted. Call fit() first.")
+
+        new_r = np.asarray(new_returns, dtype=np.float64)
+        self._returns = np.concatenate([self._returns, new_r])
+        self._sigma2 = arch_q_filter(
+            self._returns, self._params["omega"], self._alphas,
+        )
+
+    def get_params(self) -> dict[str, Any]:
+        return self._params.copy()
+
+
+# ═══════════════════════════════════════════════════
+# EWMA / RiskMetrics Forecaster
+# ═══════════════════════════════════════════════════
+
+class EWMAForecaster(BaseForecaster):
+    """Exponentially Weighted Moving Average (EWMA) / RiskMetrics forecaster.
+
+    sigma2_t = lambda * sigma2_{t-1} + (1 - lambda) * r_{t-1}^2
+
+    When ``estimate_lambda=False`` (default), uses the fixed RiskMetrics
+    decay factor (0.94 for daily data).  When ``estimate_lambda=True``,
+    estimates lambda via profile MLE over the Gaussian log-likelihood.
+
+    Parameters
+    ----------
+    lambda_ : float
+        Decay factor in (0, 1). Default 0.94 (RiskMetrics daily).
+    estimate_lambda : bool
+        If True, estimate lambda via MLE instead of using the fixed value.
+    """
+
+    def __init__(self, lambda_: float = 0.94, estimate_lambda: bool = False) -> None:
+        if not (0.0 < lambda_ < 1.0):
+            raise ValueError("lambda_ must be in (0, 1)")
+        self.lambda_ = lambda_
+        self.estimate_lambda = estimate_lambda
+        self._params: dict[str, float] = {}
+        self._returns: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._sigma2: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._fitted = False
+
+    @property
+    def model_spec(self) -> ModelSpec:
+        return ModelSpec(
+            name="EWMA (RiskMetrics)",
+            abbreviation="EWMA",
+            family="GARCH",
+            target=VolatilityTarget.CONDITIONAL_VARIANCE,
+            assumptions=("unit persistence (IGARCH(1,1) with omega=0)", "no intercept"),
+            complexity="O(T)",
+            reference="RiskMetrics Technical Document (1996), J.P. Morgan",
+            extends=("ARCH",),
+        )
+
+    def fit(
+        self,
+        returns: NDArray[np.float64],
+        realized_measures: Optional[dict[str, NDArray[np.float64]]] = None,
+        **kwargs: Any,
+    ) -> "EWMAForecaster":
+        self._returns = np.asarray(returns, dtype=np.float64)
+
+        if self.estimate_lambda:
+            from scipy.optimize import minimize_scalar
+
+            def neg_loglik(lam):
+                sig2 = ewma_filter(self._returns, lam)
+                # Gaussian log-likelihood (constant terms dropped)
+                ll = -0.5 * np.sum(np.log(sig2) + self._returns ** 2 / sig2)
+                return -ll
+
+            res = minimize_scalar(neg_loglik, bounds=(0.8, 0.9999), method="bounded")
+            self.lambda_ = float(res.x)
+
+        self._params = {"lambda": self.lambda_}
+        self._sigma2 = ewma_filter(self._returns, self.lambda_)
+        self._fitted = True
+        return self
+
+    def predict(self, horizon: int = 1, **kwargs: Any) -> ForecastResult:
+        if not self._fitted:
+            raise RuntimeError("Model not fitted. Call fit() first.")
+
+        # EWMA is IGARCH(1,1) with omega=0 => multi-step forecast is flat
+        # sigma2_{T+h|T} = lambda * sigma2_T + (1-lambda) * r_T^2  for h=1
+        # For h>1: sigma2_{T+h|T} = sigma2_{T+1|T} (flat, since persistence=1)
+        lam = self.lambda_
+        last_sigma2 = self._sigma2[-1]
+        last_r = self._returns[-1]
+
+        sig2_1 = lam * last_sigma2 + (1.0 - lam) * last_r ** 2
+        forecasts = np.full(horizon, sig2_1, dtype=np.float64)
+
+        return ForecastResult(
+            point=forecasts,
+            target_spec=TargetSpec(
+                target=VolatilityTarget.CONDITIONAL_VARIANCE,
+                horizon=horizon,
+            ),
+            model_name="EWMA (RiskMetrics)",
+            metadata={"params": self._params.copy()},
+        )
+
+    def update(
+        self,
+        new_returns: NDArray[np.float64],
+        new_realized: Optional[dict[str, NDArray[np.float64]]] = None,
+        **kwargs: Any,
+    ) -> None:
+        if not self._fitted:
+            raise RuntimeError("Model not fitted. Call fit() first.")
+
+        new_r = np.asarray(new_returns, dtype=np.float64)
+        lam = self.lambda_
+        ret_list = list(self._returns)
+        sig2_list = list(self._sigma2)
+        for r in new_r:
+            new_sig2 = lam * sig2_list[-1] + (1.0 - lam) * ret_list[-1] ** 2
+            ret_list.append(r)
+            sig2_list.append(new_sig2)
+        self._returns = np.array(ret_list, dtype=np.float64)
+        self._sigma2 = np.array(sig2_list, dtype=np.float64)
 
     def get_params(self) -> dict[str, Any]:
         return self._params.copy()

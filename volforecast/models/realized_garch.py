@@ -235,11 +235,17 @@ class RealizedGARCHForecaster(BaseForecaster):
         beta = self._params["beta"]
         gamma = self._params["gamma"]
 
+        ret_list = list(self._returns)
+        log_rv_list = list(self._log_rv)
+        log_h_list = list(self._log_h)
         for i in range(len(new_r)):
-            new_log_h = omega + beta * self._log_h[-1] + gamma * self._log_rv[-1]
-            self._returns = np.append(self._returns, new_r[i])
-            self._log_rv = np.append(self._log_rv, new_log_rv[i])
-            self._log_h = np.append(self._log_h, new_log_h)
+            new_log_h = omega + beta * log_h_list[-1] + gamma * log_rv_list[-1]
+            ret_list.append(new_r[i])
+            log_rv_list.append(new_log_rv[i])
+            log_h_list.append(new_log_h)
+        self._returns = np.array(ret_list, dtype=np.float64)
+        self._log_rv = np.array(log_rv_list, dtype=np.float64)
+        self._log_h = np.array(log_h_list, dtype=np.float64)
 
     def get_params(self) -> dict[str, Any]:
         return self._params.copy()

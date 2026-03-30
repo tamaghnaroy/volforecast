@@ -47,7 +47,7 @@ class SyntheticData:
     true_continuous: Optional[NDArray[np.float64]] = None
     true_jumps: Optional[NDArray[np.float64]] = None
     dgp_name: str = ""
-    params: dict = None
+    params: Optional[dict] = None
 
     def __post_init__(self):
         if self.params is None:

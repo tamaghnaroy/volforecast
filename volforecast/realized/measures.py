@@ -220,7 +220,7 @@ def _parzen_kernel(x: float) -> float:
     """Parzen kernel function."""
     ax = np.abs(x)
     if ax <= 0.5:
-        return 1.0 - 6.0 * x * x + 6.0 * ax * ax * ax
+        return 1.0 - 6.0 * ax * ax + 6.0 * ax * ax * ax
     elif ax <= 1.0:
         return 2.0 * (1.0 - ax) ** 3
     return 0.0

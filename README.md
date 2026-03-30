@@ -9,9 +9,16 @@ All models implement a shared `BaseForecaster` interface with explicit target de
 
 | Family | Models | Target | Reference |
 |--------|--------|--------|-----------|
-| **GARCH** | GARCH, EGARCH, GJR-GARCH, APARCH, CGARCH, Realized GARCH | Conditional Variance | Bollerslev (1986), Nelson (1991), GJR (1993), Hansen et al. (2012) |
+| **GARCH** | ARCH(q), EWMA/RiskMetrics, GARCH, EGARCH, GJR-GARCH, APARCH, CGARCH, Realized GARCH | Conditional Variance | Bollerslev (1986), Nelson (1991), GJR (1993), Hansen et al. (2012) |
+| **Long-memory** | FIGARCH | Conditional Variance | Baillie, Bollerslev, Mikkelsen (1996) |
+| **Realized** | HEAVY | Conditional Variance | Shephard & Sheppard (2010) |
+| **MIDAS** | GARCH-MIDAS | Conditional Variance | Engle, Ghysels, Sohn (2013) |
 | **HAR** | HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR | Integrated Variance / Continuous Variation | Corsi (2009), Andersen et al. (2007), Patton & Sheppard (2015) |
-| **SV** | Stochastic Volatility (via knowledge graph) | Integrated Variance | Taylor (1986), Harvey et al. (1994) |
+| **SV** | SV (QML), SV-J (with jumps) | Conditional Variance | Taylor (1986), Harvey et al. (1994), Bates (1996) |
+| **GAS** | GAS(1,1)-Normal, GAS(1,1)-Student-t | Conditional Variance | Creal, Koopman, Lucas (2013) |
+| **Regime** | Markov-Switching Volatility (K regimes) | Conditional Variance | Hamilton & Susmel (1994), Gray (1996) |
+| **Quantile** | CAViaR (SAV, Asymmetric Slope, Indirect GARCH) | Conditional Quantile | Engle & Manganelli (2004) |
+| **ML** | Random Forest, LSTM, Transformer | Conditional Variance | Breiman (2001), Hochreiter & Schmidhuber (1997) |
 | **Combination** | Equal Weight, Inverse MSE, AFTER, EWA, Fixed-Share, RL-PPO | Any | Yang (2004), Vovk (1990), Herbster & Warmuth (1998) |
 
 ### Numba-Optimized Realized Measures
@@ -209,9 +216,17 @@ volforecast/
 │   ├── measures.py # RV, BV, MedRV, MinRV, RK, TSRV, PA, RSV
 │   └── jumps.py    # BNS test, C/J decomposition
 ├── models/         # Forecaster implementations
-│   ├── garch.py    # GARCH, EGARCH, GJR, APARCH, CGARCH
+│   ├── garch.py    # ARCH, EWMA, GARCH, EGARCH, GJR, APARCH, CGARCH
 │   ├── har.py      # HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR
-│   └── realized_garch.py
+│   ├── realized_garch.py
+│   ├── figarch.py  # FIGARCH (long-memory)
+│   ├── heavy.py    # HEAVY (realized-measure driven)
+│   ├── sv.py       # SV (QML), SV-J (with jumps)
+│   ├── gas.py      # GAS/DCS score-driven volatility
+│   ├── markov_switching.py  # MS-Vol (K regimes)
+│   ├── midas.py    # GARCH-MIDAS (short/long-run)
+│   ├── caviar.py   # CAViaR quantile models
+│   └── ml_wrappers.py  # RF, LSTM, Transformer
 ├── combination/    # Online aggregation & RL
 │   ├── online.py   # EW, InvMSE, AFTER, EWA, Fixed-Share
 │   └── rl_combiner.py
@@ -239,18 +254,29 @@ volforecast/
 ## Key References
 
 - Andersen, Bollerslev, Diebold, Labys (2003). Modeling and Forecasting Realized Volatility. *Econometrica*.
+- Baillie, Bollerslev, Mikkelsen (1996). Fractionally integrated GARCH. *JoE*.
 - Barndorff-Nielsen & Shephard (2004). Power and bipower variation. *JFE*.
 - Barndorff-Nielsen & Shephard (2006). Econometrics of testing for jumps. *JFE*.
 - Barndorff-Nielsen, Hansen, Lunde, Shephard (2008). Designing realized kernels. *Econometrica*.
+- Bates (1996). Jumps and stochastic volatility. *RFS*.
 - Bollerslev (1986). Generalized autoregressive conditional heteroskedasticity. *JoE*.
 - Corsi (2009). A simple approximate long-memory model of realized volatility. *JFE*.
+- Creal, Koopman, Lucas (2013). Generalized autoregressive score models. *JAE*.
+- Engle & Manganelli (2004). CAViaR: Conditional autoregressive value at risk. *JBES*.
+- Engle, Ghysels, Sohn (2013). Stock market volatility and macroeconomic fundamentals. *REStat*.
+- Gray (1996). Modeling the conditional distribution of interest rates as a regime-switching process. *JFE*.
+- Hamilton & Susmel (1994). Autoregressive conditional heteroskedasticity and changes in regime. *JoE*.
 - Hansen & Lunde (2006). Consistent ranking of volatility models. *JoE*.
 - Hansen, Huang, Shek (2012). Realized GARCH. *JAE*.
 - Hansen, Lunde, Nason (2011). The Model Confidence Set. *Econometrica*.
+- Harvey, Ruiz, Shephard (1994). Multivariate stochastic variance models. *REStud*.
 - Herbster & Warmuth (1998). Tracking the Best Expert. *Machine Learning*.
+- Kim, Shephard, Chib (1998). Stochastic volatility: Likelihood inference. *REStud*.
 - Nelson (1991). Conditional heteroskedasticity in asset returns. *Econometrica*.
 - Patton (2011). Volatility forecast comparison using imperfect proxies. *JoE*.
 - Patton & Sheppard (2015). Good volatility, bad volatility. *JFQA*.
+- Shephard & Sheppard (2010). Realising the future: forecasting with high-frequency-based volatility (HEAVY). *JoFE*.
+- Taylor (1986). Modelling Financial Time Series. *Wiley*.
 - Vovk (1990). Aggregating strategies. *COLT*.
 - Yang (2004). Combining forecasting procedures. *Econometric Theory*.
 - Zhang, Mykland, Aït-Sahalia (2005). A tale of two time scales. *JASA*.

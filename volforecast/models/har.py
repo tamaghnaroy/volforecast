@@ -349,13 +349,16 @@ class HARJForecaster(BaseForecaster):
             raise RuntimeError("Model not fitted.")
         if new_realized is None or "RV" not in new_realized:
             raise ValueError("Requires new_realized with 'RV'")
-        self._rv = np.concatenate([self._rv, np.asarray(new_realized["RV"], dtype=np.float64)])
+        new_rv = np.asarray(new_realized["RV"], dtype=np.float64)
+        self._rv = np.concatenate([self._rv, new_rv])
         if "JV" in new_realized:
             self._jv = np.concatenate([self._jv, np.asarray(new_realized["JV"], dtype=np.float64)])
         elif "BV" in new_realized:
             bv = np.asarray(new_realized["BV"], dtype=np.float64)
-            new_rv = np.asarray(new_realized["RV"], dtype=np.float64)
             self._jv = np.concatenate([self._jv, np.maximum(new_rv - bv, 0.0)])
+        else:
+            # No jump info: assume zero jump variation to keep arrays aligned
+            self._jv = np.concatenate([self._jv, np.zeros_like(new_rv)])
 
     def get_params(self) -> dict[str, Any]:
         if len(self._beta) == 0:
@@ -474,20 +477,26 @@ class HARCJForecaster(BaseForecaster):
     ) -> None:
         if not self._fitted:
             raise RuntimeError("Model not fitted.")
-        if new_realized is None:
-            raise ValueError("Requires realized measures for update")
-        if "RV" in new_realized:
-            self._rv = np.concatenate([
-                self._rv, np.asarray(new_realized["RV"], dtype=np.float64)
-            ])
-        if "CV" in new_realized:
-            self._cv = np.concatenate([
-                self._cv, np.asarray(new_realized["CV"], dtype=np.float64)
-            ])
-        if "JV" in new_realized:
-            self._jv = np.concatenate([
-                self._jv, np.asarray(new_realized["JV"], dtype=np.float64)
-            ])
+        if new_realized is None or "RV" not in new_realized:
+            raise ValueError("Requires new_realized with 'RV'")
+
+        new_rv = np.asarray(new_realized["RV"], dtype=np.float64)
+        self._rv = np.concatenate([self._rv, new_rv])
+
+        if "CV" in new_realized and "JV" in new_realized:
+            new_cv = np.asarray(new_realized["CV"], dtype=np.float64)
+            new_jv = np.asarray(new_realized["JV"], dtype=np.float64)
+        elif "BV" in new_realized:
+            bv = np.asarray(new_realized["BV"], dtype=np.float64)
+            new_cv = np.minimum(bv, new_rv)
+            new_jv = np.maximum(new_rv - bv, 0.0)
+        else:
+            # No jump info: assume all variation is continuous
+            new_cv = new_rv.copy()
+            new_jv = np.zeros_like(new_rv)
+
+        self._cv = np.concatenate([self._cv, new_cv])
+        self._jv = np.concatenate([self._jv, new_jv])
 
     def get_params(self) -> dict[str, Any]:
         if len(self._beta) == 0:

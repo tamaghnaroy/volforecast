@@ -18,10 +18,14 @@ from volforecast.models.garch import (
     EGARCHForecaster,
     CGARCHForecaster,
     APARCHForecaster,
+    ARCHForecaster,
+    EWMAForecaster,
     garch11_filter,
     gjr_garch11_filter,
     egarch11_filter,
     cgarch11_filter,
+    arch_q_filter,
+    ewma_filter,
 )
 from volforecast.models.har import (
     HARForecaster,
@@ -588,3 +592,201 @@ class TestRealizedGARCHExtended:
         params = model.get_params()
         assert "omega" in params
         assert "beta" in params
+
+
+# ─── ARCH(q) / EWMA Numba Filter Tests ───
+
+class TestARCHQFilter:
+    def test_arch1_filter_shape(self):
+        r = np.random.default_rng(42).normal(0, 0.01, size=100)
+        alphas = np.array([0.3], dtype=np.float64)
+        sig2 = arch_q_filter(r, 1e-6, alphas)
+        assert sig2.shape == (100,)
+        assert np.all(sig2 > 0)
+
+    def test_arch1_filter_known(self):
+        """ARCH(1) filter should match manual calculation."""
+        r = np.array([0.01, -0.02, 0.005], dtype=np.float64)
+        omega = 1e-6
+        alphas = np.array([0.3], dtype=np.float64)
+        sig2 = arch_q_filter(r, omega, alphas)
+        unc = omega / (1.0 - 0.3)
+        assert np.isclose(sig2[0], omega + 0.3 * unc)
+        expected_1 = omega + 0.3 * r[0] ** 2
+        assert np.isclose(sig2[1], expected_1)
+
+    def test_arch5_filter_shape(self):
+        r = np.random.default_rng(42).normal(0, 0.01, size=200)
+        alphas = np.array([0.1, 0.08, 0.06, 0.04, 0.02], dtype=np.float64)
+        sig2 = arch_q_filter(r, 1e-6, alphas)
+        assert sig2.shape == (200,)
+        assert np.all(sig2 > 0)
+        assert np.all(np.isfinite(sig2))
+
+
+class TestEWMAFilter:
+    def test_ewma_filter_shape(self):
+        r = np.random.default_rng(42).normal(0, 0.01, size=100)
+        sig2 = ewma_filter(r, 0.94)
+        assert sig2.shape == (100,)
+        assert np.all(sig2 > 0)
+
+    def test_ewma_filter_known(self):
+        """Verify EWMA recursion against manual calculation."""
+        r = np.array([0.01, -0.02, 0.005, 0.003], dtype=np.float64)
+        lam = 0.94
+        sig2 = ewma_filter(r, lam)
+        sample_var = np.mean(r ** 2)
+        assert np.isclose(sig2[0], sample_var)
+        expected_1 = lam * sample_var + (1.0 - lam) * r[0] ** 2
+        assert np.isclose(sig2[1], expected_1)
+        expected_2 = lam * expected_1 + (1.0 - lam) * r[1] ** 2
+        assert np.isclose(sig2[2], expected_2)
+
+    def test_ewma_high_lambda_smooth(self):
+        """Higher lambda should produce smoother variance series."""
+        r = np.random.default_rng(42).normal(0, 0.01, size=200)
+        sig2_low = ewma_filter(r, 0.80)
+        sig2_high = ewma_filter(r, 0.99)
+        # Higher lambda => lower variance of the variance series
+        assert np.std(sig2_high[10:]) < np.std(sig2_low[10:])
+
+
+# ─── ARCHForecaster Tests ───
+
+class TestARCHForecaster:
+    def test_fit_predict(self, garch_data):
+        model = ARCHForecaster(q=1)
+        model.fit(garch_data.daily_returns[:500])
+        result = model.predict(horizon=1)
+        assert result.point.shape == (1,)
+        assert result.point[0] > 0
+        assert result.target_spec.target == VolatilityTarget.CONDITIONAL_VARIANCE
+
+    def test_multi_step_forecast(self, garch_data):
+        model = ARCHForecaster(q=1)
+        model.fit(garch_data.daily_returns[:500])
+        result = model.predict(horizon=10)
+        assert result.point.shape == (10,)
+        assert np.all(result.point > 0)
+        assert np.all(np.isfinite(result.point))
+        # ARCH multi-step forecasts should converge toward unconditional variance
+        params = model.get_params()
+        alpha_sum = sum(v for k, v in params.items() if k.startswith("alpha"))
+        unc_var = params["omega"] / max(1.0 - alpha_sum, 1e-8)
+        assert abs(result.point[-1] - unc_var) < abs(result.point[0] - unc_var) + 1e-10
+
+    def test_higher_order(self, garch_data):
+        model = ARCHForecaster(q=3)
+        model.fit(garch_data.daily_returns[:500])
+        result = model.predict(horizon=5)
+        assert result.point.shape == (5,)
+        assert np.all(result.point > 0)
+        params = model.get_params()
+        assert "alpha[1]" in params
+        assert "alpha[2]" in params
+        assert "alpha[3]" in params
+
+    def test_online_update(self, garch_data):
+        model = ARCHForecaster(q=1)
+        model.fit(garch_data.daily_returns[:500])
+        n_before = len(model._returns)
+        model.update(garch_data.daily_returns[500:503])
+        assert len(model._returns) == n_before + 3
+        assert len(model._sigma2) == n_before + 3
+
+    def test_model_spec(self):
+        model = ARCHForecaster(q=5)
+        spec = model.model_spec
+        assert spec.abbreviation == "ARCH"
+        assert spec.family == "GARCH"
+        assert spec.name == "ARCH(5)"
+
+    def test_predict_before_fit_raises(self):
+        model = ARCHForecaster()
+        with pytest.raises(RuntimeError):
+            model.predict()
+
+    def test_update_before_fit_raises(self):
+        model = ARCHForecaster()
+        with pytest.raises(RuntimeError):
+            model.update(np.array([0.01]))
+
+    def test_invalid_q_raises(self):
+        with pytest.raises(ValueError):
+            ARCHForecaster(q=0)
+
+
+# ─── EWMAForecaster Tests ───
+
+class TestEWMAForecaster:
+    def test_fit_predict_fixed_lambda(self, garch_data):
+        model = EWMAForecaster(lambda_=0.94)
+        model.fit(garch_data.daily_returns[:500])
+        result = model.predict(horizon=1)
+        assert result.point.shape == (1,)
+        assert result.point[0] > 0
+        assert result.target_spec.target == VolatilityTarget.CONDITIONAL_VARIANCE
+
+    def test_multi_step_flat(self, garch_data):
+        """EWMA multi-step forecasts should be flat (unit persistence)."""
+        model = EWMAForecaster()
+        model.fit(garch_data.daily_returns[:500])
+        result = model.predict(horizon=10)
+        assert result.point.shape == (10,)
+        assert np.all(result.point > 0)
+        # All horizons should be equal (IGARCH flat forecast)
+        assert np.allclose(result.point, result.point[0])
+
+    def test_estimate_lambda(self, garch_data):
+        model = EWMAForecaster(estimate_lambda=True)
+        model.fit(garch_data.daily_returns[:500])
+        params = model.get_params()
+        assert 0.8 < params["lambda"] < 1.0
+        result = model.predict(horizon=1)
+        assert result.point[0] > 0
+
+    def test_online_update(self, garch_data):
+        model = EWMAForecaster()
+        model.fit(garch_data.daily_returns[:500])
+        n_before = len(model._returns)
+        model.update(garch_data.daily_returns[500:505])
+        assert len(model._returns) == n_before + 5
+        assert len(model._sigma2) == n_before + 5
+
+    def test_update_consistency(self, garch_data):
+        """Update should produce same result as fitting on full data."""
+        r = garch_data.daily_returns[:505]
+        model_full = EWMAForecaster(lambda_=0.94)
+        model_full.fit(r)
+
+        model_update = EWMAForecaster(lambda_=0.94)
+        model_update.fit(r[:500])
+        model_update.update(r[500:505])
+
+        # Last sigma2 should be identical
+        assert np.isclose(model_update._sigma2[-1], model_full._sigma2[-1], rtol=1e-10)
+
+    def test_model_spec(self):
+        model = EWMAForecaster()
+        spec = model.model_spec
+        assert spec.abbreviation == "EWMA"
+        assert spec.family == "GARCH"
+
+    def test_predict_before_fit_raises(self):
+        model = EWMAForecaster()
+        with pytest.raises(RuntimeError):
+            model.predict()
+
+    def test_update_before_fit_raises(self):
+        model = EWMAForecaster()
+        with pytest.raises(RuntimeError):
+            model.update(np.array([0.01]))
+
+    def test_invalid_lambda_raises(self):
+        with pytest.raises(ValueError):
+            EWMAForecaster(lambda_=1.0)
+        with pytest.raises(ValueError):
+            EWMAForecaster(lambda_=0.0)
+        with pytest.raises(ValueError):
+            EWMAForecaster(lambda_=-0.5)

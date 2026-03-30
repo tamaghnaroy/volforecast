@@ -11,11 +11,14 @@ Supports:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
+
+logger = logging.getLogger(__name__)
 
 from volforecast.core.base import BaseForecaster, ForecastResult
 from volforecast.realized.measures import (
@@ -182,7 +185,8 @@ class BenchmarkRunner:
                     }
                     try:
                         forecaster.fit(train_r, train_realized)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("%s fit failed at t=%d: %s", model_name, t, e)
                         forecasts_oos[t] = rv[oos_idx - 1]  # Fallback: last RV
                         continue
                 else:
@@ -193,14 +197,15 @@ class BenchmarkRunner:
                             k: v[oos_idx - 1:oos_idx] for k, v in realized.items()
                         }
                         forecaster.update(new_r, new_realized)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("%s update failed at t=%d: %s", model_name, t, e)
 
                 # Predict
                 try:
                     result = forecaster.predict(horizon=1)
                     forecasts_oos[t] = result.point[0]
-                except Exception:
+                except Exception as e:
+                    logger.warning("%s predict failed at t=%d: %s", model_name, t, e)
                     forecasts_oos[t] = rv[oos_idx - 1]
 
             # Evaluate
