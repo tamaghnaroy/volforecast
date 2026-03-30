@@ -1,0 +1,8 @@
+metric,value
+avg_weight_comp0,0.13477154637557184
+avg_weight_comp1,0.8652284536244292
+final_weight_comp0,0.047800327277265256
+final_weight_comp1,0.9521996727227348
+weight_entropy,0.3953575945570042
+DM_combo_vs_EWMA_MSE_p,0.040040359259616395
+DM_combo_vs_EWMA_MSE_preferred,model1

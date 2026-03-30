@@ -227,10 +227,27 @@ def _parzen_kernel(x: float) -> float:
 
 
 @njit(cache=True)
+def _bartlett_kernel(x: float) -> float:
+    """Bartlett (Newey-West) kernel function."""
+    ax = np.abs(x)
+    if ax <= 1.0:
+        return 1.0 - ax
+    return 0.0
+
+
+@njit(cache=True)
+def _cubic_kernel(x: float) -> float:
+    """Cubic (Priestley-Epanechnikov) kernel function."""
+    ax = np.abs(x)
+    if ax <= 1.0:
+        return 1.0 - 3.0 * ax * ax + 2.0 * ax * ax * ax
+    return 0.0
+
+
+@njit(cache=True)
 def _rk_core(intraday_returns: NDArray[np.float64], bandwidth: int) -> float:
     """Realized Kernel with Parzen kernel."""
     n = intraday_returns.shape[0]
-    # Gamma_0
     gamma0 = 0.0
     for i in range(n):
         gamma0 += intraday_returns[i] ** 2
@@ -245,19 +262,79 @@ def _rk_core(intraday_returns: NDArray[np.float64], bandwidth: int) -> float:
     return rk
 
 
+@njit(cache=True)
+def _rk_bartlett_core(intraday_returns: NDArray[np.float64], bandwidth: int) -> float:
+    """Realized Kernel with Bartlett kernel."""
+    n = intraday_returns.shape[0]
+    gamma0 = 0.0
+    for i in range(n):
+        gamma0 += intraday_returns[i] ** 2
+
+    rk = gamma0
+    for h in range(1, bandwidth + 1):
+        gamma_h = 0.0
+        for i in range(h, n):
+            gamma_h += intraday_returns[i] * intraday_returns[i - h]
+        weight = _bartlett_kernel(h / (bandwidth + 1.0))
+        rk += 2.0 * weight * gamma_h
+    return rk
+
+
+@njit(cache=True)
+def _rk_cubic_core(intraday_returns: NDArray[np.float64], bandwidth: int) -> float:
+    """Realized Kernel with cubic kernel."""
+    n = intraday_returns.shape[0]
+    gamma0 = 0.0
+    for i in range(n):
+        gamma0 += intraday_returns[i] ** 2
+
+    rk = gamma0
+    for h in range(1, bandwidth + 1):
+        gamma_h = 0.0
+        for i in range(h, n):
+            gamma_h += intraday_returns[i] * intraday_returns[i - h]
+        weight = _cubic_kernel(h / (bandwidth + 1.0))
+        rk += 2.0 * weight * gamma_h
+    return rk
+
+
+def _auto_bandwidth_rk(
+    intraday_returns: NDArray[np.float64],
+    kernel: str = "parzen",
+) -> int:
+    """Rule-of-thumb bandwidth (Barndorff-Nielsen et al. 2009, eq. 26).
+
+    H* = c_star * xi^{4/5} * n^{3/5}  where xi^2 = IQ / RV^2.
+    """
+    r = intraday_returns
+    n = len(r)
+    rk_naive = float(np.sum(r ** 2))
+    if rk_naive < 1e-20:
+        return max(1, int(np.ceil(n ** 0.6)))
+    iq_est = float(n * np.sum(r ** 4) / 3.0)
+    xi2 = iq_est / max(rk_naive ** 2, 1e-30)
+    c_star = {"parzen": 3.5134, "bartlett": 2.8284, "cubic": 3.1484}.get(kernel, 3.5134)
+    H_star = c_star * (xi2 ** 0.4) * (n ** 0.6)
+    return max(1, int(np.round(H_star)))
+
+
 def realized_kernel(
     intraday_returns: NDArray[np.float64],
     bandwidth: int | None = None,
+    kernel: str = "parzen",
 ) -> float:
-    """Realized Kernel (Barndorff-Nielsen, Hansen, Lunde, Shephard, 2008).
+    """Realized Kernel (Barndorff-Nielsen, Hansen, Lunde, Shephard, 2008/2009).
 
-    Noise-robust estimator of integrated variance using Parzen kernel.
+    Noise-robust estimator of integrated variance.
 
     Parameters
     ----------
     intraday_returns : array, shape (n,)
     bandwidth : int, optional
-        Kernel bandwidth H. If None, uses optimal rate H ~ n^{3/5}.
+        Kernel bandwidth H. If None, uses the Barndorff-Nielsen et al. (2009)
+        rule-of-thumb: H* = c_star * xi^{4/5} * n^{3/5}.
+    kernel : str
+        Kernel function. One of "parzen" (default), "bartlett", "cubic".
 
     Returns
     -------
@@ -266,7 +343,11 @@ def realized_kernel(
     r = np.ascontiguousarray(intraday_returns, dtype=np.float64)
     n = r.shape[0]
     if bandwidth is None:
-        bandwidth = max(1, int(np.ceil(n ** 0.6)))
+        bandwidth = _auto_bandwidth_rk(r, kernel)
+    if kernel == "bartlett":
+        return _rk_bartlett_core(r, bandwidth)
+    elif kernel == "cubic":
+        return _rk_cubic_core(r, bandwidth)
     return _rk_core(r, bandwidth)
 
 

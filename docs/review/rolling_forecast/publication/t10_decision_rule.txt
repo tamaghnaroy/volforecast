@@ -1,0 +1,24 @@
+# Predeclared Decision Rule
+
+## Primary Metric
+MSE (selected due to low proxy SNR < 1; QLIKE as secondary)
+
+## Primary Benchmark
+Implied Vol 1M (strongest external baseline)
+
+## Success Criteria
+1. AutoVol significantly beats all naive baselines (EWMA, RV) on MSE (DM p < 0.10)
+2. AutoVol adds incremental predictive value to IV (encompassing beta1 significant)
+3. AutoVol+IV combination beats standalone IV on MSE
+4. Results replicate across ≥2 of 3 out-of-time splits
+5. ±2σ coverage between 93% and 97%
+
+## Results Against Criteria
+C1 (beat naive baselines): FAIL
+C2 (incremental over IV): FAIL (beta1_p=0.3122)
+C3 (AutoVol+IV beats IV): FAIL (combo MSE=5.5602e-09 vs IV MSE=5.4659e-09)
+C4 (replicates ≥2/3 splits): PASS (2/3 wins)
+C5 (coverage 93-97%): PASS (94.4%)
+
+Overall: 2/5 criteria met
+VERDICT: Not yet publication-grade (need ≥4/5 criteria)

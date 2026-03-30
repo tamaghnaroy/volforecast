@@ -1,0 +1,11 @@
+Experiment run: 2026-03-30T07:42:16.430941
+Python: 3.12.9 | packaged by conda-forge | (main, Mar  4 2025, 22:37:18) [MSC v.1943 64 bit (AMD64)]
+Platform: Windows-11-10.0.26100-SP0
+NumPy: 1.26.4
+Pandas: 2.2.2
+Matplotlib: 3.9.2
+volforecast: 0.1.0
+SciPy: 1.13.1
+Numba: 0.64.0
+Data source: Bloomberg/FinAPI
+Script: C:\Users\tamaghna roy\CascadeProjects\windsurf-project-3\docs\review\rolling_forecast\run_rolling_forecast.py

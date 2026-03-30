@@ -1,0 +1,115 @@
+{
+  "provenance": {
+    "timestamp": "2026-03-30T09:26:12.102789",
+    "python": "3.12.9 | packaged by conda-forge | (main, Mar  4 2025, 22:37:18) [MSC v.1943 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "numpy": "1.26.4",
+    "cli_args": [
+      "docs\\review\\rolling_forecast\\run_rolling_forecast.py"
+    ],
+    "config": {
+      "model_families": [
+        "GARCH"
+      ],
+      "combination_method": "auto",
+      "loss_fn": "QLIKE",
+      "window_type": "expanding",
+      "min_train": 500,
+      "refit_every": 21,
+      "mcs_alpha": 0.1,
+      "random_state": null,
+      "T": 3574,
+      "window_size_used": 500
+    },
+    "volforecast_version": "0.1.0",
+    "scipy": "1.13.1",
+    "git_commit": "7d34674151ad2d153bd00ddfd80d6eaa93165cd8",
+    "git_dirty": true
+  },
+  "profile": {
+    "T": 3574,
+    "hurst_exp": 0.7701735844465916,
+    "has_long_memory": true,
+    "has_rough_vol": false,
+    "has_leverage": false,
+    "has_jumps": false,
+    "jump_fraction": 0.0,
+    "excess_kurtosis": 5.285463543787014,
+    "heavy_tails": true,
+    "has_regime_switching": false,
+    "has_intraday": false,
+    "has_realized": false
+  },
+  "selection": {
+    "primary_loss": "MSE",
+    "proxy_quality": "poor — rankings may be unreliable",
+    "mcs_survivors": [
+      "EWMA (RiskMetrics)",
+      "Component GARCH(1,1)"
+    ],
+    "eliminated": [
+      "GARCH(1,1)",
+      "ARCH(1)",
+      "FIGARCH(1,d,1)"
+    ],
+    "mz_flags": {
+      "EWMA (RiskMetrics)": false,
+      "Component GARCH(1,1)": false
+    },
+    "candidate_metrics": [
+      {
+        "model": "EWMA (RiskMetrics)",
+        "mse": 6.913146710052308e-09,
+        "qlike": -9.543066334166594,
+        "mz_r2": 0.05473515099647275,
+        "mz_efficient": false
+      },
+      {
+        "model": "Component GARCH(1,1)",
+        "mse": 6.916811329697591e-09,
+        "qlike": -9.535780994438129,
+        "mz_r2": 0.048808127570865834,
+        "mz_efficient": false
+      },
+      {
+        "model": "GARCH(1,1)",
+        "mse": 6.997838471145608e-09,
+        "qlike": 1001.4762000685714,
+        "mz_r2": 0.03961104662126469,
+        "mz_efficient": false
+      },
+      {
+        "model": "ARCH(1)",
+        "mse": 7.163694010909337e-09,
+        "qlike": -9.390978790872998,
+        "mz_r2": 0.01812538276405773,
+        "mz_efficient": false
+      },
+      {
+        "model": "FIGARCH(1,d,1)",
+        "mse": 8.259160427784495e-09,
+        "qlike": 3120431422478851.5,
+        "mz_r2": 0.0,
+        "mz_efficient": false
+      }
+    ]
+  },
+  "combination": {
+    "combiner_name": "EWA",
+    "component_models": [
+      "EWMA (RiskMetrics)",
+      "Component GARCH(1,1)"
+    ],
+    "initial_weights": [
+      0.5,
+      0.5
+    ]
+  },
+  "benchmark_summary": "Benchmark: Unknown | expanding window | train=500 oos=3074 | sorted by QLIKE\n================================================================================\nModel                              MSE        QLIKE    MSE(true)    MZ_R2 MZ_eff\n--------------------------------------------------------------------------------\nEWMA (RiskMetrics)        6.913147e-09    -9.543066 0.000000e+00   0.0547      N\nComponent GARCH(1,1)      6.916811e-09    -9.535781 0.000000e+00   0.0488      N\nARCH(1)                   7.163694e-09    -9.390979 0.000000e+00   0.0181      N\nGARCH(1,1)                6.997838e-09  1001.476200 0.000000e+00   0.0396      N\nFIGARCH(1,d,1)            8.259160e-09 3120431422478851.500000 0.000000e+00   0.0000      N",
+  "proxy_quality": "poor — rankings may be unreliable",
+  "warnings": [
+    "Proxy SNR=0.17 < 1. Falling back to MSE for ranking.",
+    "EWMA (RiskMetrics) is not MZ-efficient (alpha=0.0000, beta=0.7252)",
+    "Component GARCH(1,1) is not MZ-efficient (alpha=0.0000, beta=0.8297)"
+  ]
+}

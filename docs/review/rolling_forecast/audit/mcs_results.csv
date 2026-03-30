@@ -1,0 +1,6 @@
+model,in_mcs,p_value,elimination_order
+"GARCH(1,1)",True,1.0,-1
+EWMA (RiskMetrics),True,1.0,-1
+ARCH(1),True,1.0,-1
+"FIGARCH(1,d,1)",False,0.0038,0
+"Component GARCH(1,1)",True,1.0,-1

@@ -5,6 +5,8 @@ Implements:
 - Diebold-Mariano test with HAC standard errors (Diebold & Mariano, 1995)
 - Mincer-Zarnowitz efficiency regression (Mincer & Zarnowitz, 1969)
 - Model Confidence Set (Hansen, Lunde, Nason, 2011)
+- Hit rate / coverage test (Christoffersen, 1998)
+- Dynamic Quantile (DQ) test (Engle & Manganelli, 2004)
 
 References
 ----------
@@ -16,6 +18,10 @@ References
   In Economic Forecasts and Expectations.
 - Hansen, Lunde, Nason (2011). "The Model Confidence Set."
   Econometrica 79(2), 453-497.
+- Christoffersen (1998). "Evaluating interval forecasts."
+  International Economic Review 39(4), 841-862.
+- Engle & Manganelli (2004). "CAViaR: Conditional autoregressive value at
+  risk by regression quantiles." JBES 22(4), 367-381.
 """
 
 from __future__ import annotations
@@ -209,7 +215,17 @@ def mincer_zarnowitz_test(
 
     # Standard errors (OLS)
     sigma2 = ss_res / max(T - 2, 1)
-    XtX_inv = np.linalg.inv(X.T @ X)
+    try:
+        XtX_inv = np.linalg.inv(X.T @ X)
+    except np.linalg.LinAlgError:
+        # Singular X'X — constant forecasts or degenerate input
+        return MZTestResult(
+            alpha=alpha, beta=beta,
+            alpha_se=np.inf, beta_se=np.inf,
+            r_squared=r_squared,
+            f_stat=0.0, f_pvalue=1.0,
+            efficient=False,
+        )
     se = np.sqrt(np.diag(sigma2 * XtX_inv))
     alpha_se, beta_se = se[0], se[1]
 
@@ -407,4 +423,240 @@ def model_confidence_set(
         included=alive,
         p_values=p_values,
         eliminated_order=eliminated_order,
+    )
+
+
+# ═══════════════════════════════════════════════════
+# Quantile Forecast Diagnostic Tests
+# ═══════════════════════════════════════════════════
+
+@dataclass
+class HitRateTestResult:
+    """Christoffersen (1998) coverage test result.
+
+    Attributes
+    ----------
+    tau : float
+        Nominal quantile level.
+    hit_rate : float
+        Empirical exceedance rate = mean(r_t < q_t).
+    uc_statistic : float
+        LR statistic for unconditional coverage H0: hit_rate == tau.
+    uc_pvalue : float
+        p-value for unconditional coverage test (chi2, df=1).
+    ind_statistic : float
+        LR statistic for serial independence of hits (first-order Markov).
+    ind_pvalue : float
+        p-value for independence test (chi2, df=1).
+    cc_statistic : float
+        LR statistic for conditional coverage (uc + ind, chi2, df=2).
+    cc_pvalue : float
+        p-value for conditional coverage test.
+    n_hits : int
+        Number of exceedances observed.
+    n_obs : int
+        Total number of observations.
+    """
+    tau: float
+    hit_rate: float
+    uc_statistic: float
+    uc_pvalue: float
+    ind_statistic: float
+    ind_pvalue: float
+    cc_statistic: float
+    cc_pvalue: float
+    n_hits: int
+    n_obs: int
+
+
+def hit_rate_test(
+    returns: NDArray[np.float64],
+    quantile_forecasts: NDArray[np.float64],
+    tau: float = 0.05,
+) -> HitRateTestResult:
+    """Christoffersen (1998) unconditional and conditional coverage tests.
+
+    Tests whether a sequence of quantile (VaR) forecasts has correct empirical
+    coverage and serially independent hit indicators.
+
+    - **Unconditional Coverage (UC):** H0: P(r_t < q_t) = tau
+    - **Independence (Ind):** H0: Hit_t are serially uncorrelated (i.i.d.)
+    - **Conditional Coverage (CC):** H0: UC and Ind hold jointly (df=2)
+
+    Parameters
+    ----------
+    returns : array, shape (T,)
+        Realized return series.
+    quantile_forecasts : array, shape (T,)
+        Conditional quantile forecast series at level *tau*.
+        For VaR forecasts these are typically negative values.
+    tau : float
+        Nominal quantile level (e.g., 0.05 for 5% VaR).
+
+    Returns
+    -------
+    HitRateTestResult
+
+    References
+    ----------
+    Christoffersen (1998). "Evaluating interval forecasts."
+    International Economic Review 39(4), 841-862.
+    """
+    r = np.asarray(returns, dtype=np.float64)
+    q = np.asarray(quantile_forecasts, dtype=np.float64)
+    T = len(r)
+
+    hits = (r < q).astype(np.float64)
+    n1 = int(np.sum(hits))
+    n0 = T - n1
+    p_hat = n1 / T
+
+    _eps = 1e-15
+
+    # --- Unconditional Coverage (Kupiec, 1995) ---
+    if p_hat > _eps and p_hat < 1.0 - _eps:
+        log_l0 = n1 * np.log(tau + _eps) + n0 * np.log(1.0 - tau + _eps)
+        log_l1 = n1 * np.log(p_hat) + n0 * np.log(1.0 - p_hat)
+        uc_stat = float(-2.0 * (log_l0 - log_l1))
+    else:
+        uc_stat = 0.0
+    uc_stat = max(uc_stat, 0.0)
+    uc_pval = float(stats.chi2.sf(uc_stat, df=1))
+
+    # --- Independence: first-order Markov transition test ---
+    n00 = float(np.sum((hits[:-1] == 0) & (hits[1:] == 0)))
+    n01 = float(np.sum((hits[:-1] == 0) & (hits[1:] == 1)))
+    n10 = float(np.sum((hits[:-1] == 1) & (hits[1:] == 0)))
+    n11 = float(np.sum((hits[:-1] == 1) & (hits[1:] == 1)))
+
+    p01 = n01 / max(n00 + n01, 1)
+    p11 = n11 / max(n10 + n11, 1)
+    p_joint = (n01 + n11) / max(n00 + n01 + n10 + n11, 1)
+
+    log_l_ind0 = (
+        (n00 + n10) * np.log(max(1.0 - p_joint, _eps))
+        + (n01 + n11) * np.log(max(p_joint, _eps))
+    )
+    log_l_ind1 = (
+        n00 * np.log(max(1.0 - p01, _eps))
+        + n01 * np.log(max(p01, _eps))
+        + n10 * np.log(max(1.0 - p11, _eps))
+        + n11 * np.log(max(p11, _eps))
+    )
+    ind_stat = float(-2.0 * (log_l_ind0 - log_l_ind1))
+    ind_stat = max(ind_stat, 0.0)
+    ind_pval = float(stats.chi2.sf(ind_stat, df=1))
+
+    # --- Conditional Coverage: uc + ind ---
+    cc_stat = uc_stat + ind_stat
+    cc_pval = float(stats.chi2.sf(cc_stat, df=2))
+
+    return HitRateTestResult(
+        tau=tau,
+        hit_rate=p_hat,
+        uc_statistic=uc_stat,
+        uc_pvalue=uc_pval,
+        ind_statistic=ind_stat,
+        ind_pvalue=ind_pval,
+        cc_statistic=cc_stat,
+        cc_pvalue=cc_pval,
+        n_hits=n1,
+        n_obs=T,
+    )
+
+
+@dataclass
+class DQTestResult:
+    """Dynamic Quantile (DQ) test result (Engle & Manganelli, 2004).
+
+    Attributes
+    ----------
+    statistic : float
+        DQ chi-squared test statistic.
+    p_value : float
+        p-value; small values reject H0 that hits are unpredictable.
+    n_lags : int
+        Number of lagged Hit terms used as instruments.
+    df : int
+        Degrees of freedom = n_lags + 2 (constant + lags + q_t^2).
+    """
+    statistic: float
+    p_value: float
+    n_lags: int
+    df: int
+
+
+def dq_test(
+    returns: NDArray[np.float64],
+    quantile_forecasts: NDArray[np.float64],
+    tau: float = 0.05,
+    n_lags: int = 4,
+) -> DQTestResult:
+    """Dynamic Quantile (DQ) test for quantile forecast calibration.
+
+    Tests H0: the centered hit series Hit_t = I(r_t < q_t) - tau is
+    orthogonal to {1, Hit_{t-1}, ..., Hit_{t-K}, q_t^2}.
+
+    A well-calibrated quantile forecast should produce hits that are
+    unpredictable from past hits and from the current forecast level.
+    The test statistic is:
+
+        DQ = (X'Hit)' (X'X)^{-1} (X'Hit) / [tau*(1-tau)]  ~  chi2(K+2)
+
+    where X = [1, Hit_{t-1}, ..., Hit_{t-K}, q_t^2].
+
+    Parameters
+    ----------
+    returns : array, shape (T,)
+        Realized return series.
+    quantile_forecasts : array, shape (T,)
+        Conditional quantile forecast series at level *tau*.
+    tau : float
+        Nominal quantile level (default 0.05).
+    n_lags : int
+        Number of lagged Hit_t terms in the instrument matrix (default 4).
+
+    Returns
+    -------
+    DQTestResult
+
+    References
+    ----------
+    Engle & Manganelli (2004). "CAViaR: Conditional autoregressive value at
+    risk by regression quantiles." JBES 22(4), 367-381.
+    """
+    r = np.asarray(returns, dtype=np.float64)
+    q = np.asarray(quantile_forecasts, dtype=np.float64)
+    T = len(r)
+
+    hit = (r < q).astype(np.float64) - tau
+
+    start = n_lags
+    T_eff = T - start
+    df = n_lags + 2
+
+    # Build instrument matrix X: [constant, Hit_{t-1..K}, q_t^2]
+    X = np.ones((T_eff, df), dtype=np.float64)
+    for k in range(n_lags):
+        X[:, k + 1] = hit[start - k - 1 : T - k - 1]
+    X[:, n_lags + 1] = q[start:] ** 2
+
+    y = hit[start:]
+
+    try:
+        XtX = X.T @ X
+        Xty = X.T @ y
+        beta = np.linalg.solve(XtX, Xty)
+        dq_stat = float(Xty @ beta / (tau * (1.0 - tau)))
+    except np.linalg.LinAlgError:
+        dq_stat = 0.0
+
+    dq_stat = max(dq_stat, 0.0)
+    p_value = float(stats.chi2.sf(dq_stat, df=df))
+
+    return DQTestResult(
+        statistic=dq_stat,
+        p_value=p_value,
+        n_lags=n_lags,
+        df=df,
     )

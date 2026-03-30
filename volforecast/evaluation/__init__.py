@@ -21,9 +21,16 @@ from volforecast.evaluation.tests import (
     diebold_mariano_test,
     mincer_zarnowitz_test,
     model_confidence_set,
+    hit_rate_test,
+    dq_test,
 )
 from volforecast.evaluation.proxy import (
     proxy_noise_correction,
     attenuation_bias_correction,
     hansen_lunde_adjustment,
+)
+from volforecast.evaluation.conformal import (
+    SplitConformalVol,
+    OnlineConformalVol,
+    coverage_diagnostic,
 )

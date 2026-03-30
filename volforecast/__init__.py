@@ -18,3 +18,5 @@ from volforecast import combination
 from volforecast import evaluation
 from volforecast import knowledge
 from volforecast import benchmark
+from volforecast import auto
+from volforecast.auto import AutoVolForecaster, AutoForecastResult, auto_fit

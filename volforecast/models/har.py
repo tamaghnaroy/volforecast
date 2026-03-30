@@ -639,3 +639,172 @@ class SHARForecaster(BaseForecaster):
             f"beta_lag{l}" for l in self.lags[1:]
         ]
         return dict(zip(names, self._beta.tolist()))
+
+
+class HARIVForecaster(BaseForecaster):
+    """HAR-IV model: HAR-RV augmented with options-implied volatility.
+
+    RV_{t+1} = beta_0 + beta_d*RV_d + beta_w*RV_w + beta_m*RV_m
+               + beta_iv * IV_t + e_{t+1}
+
+    IV contains forward-looking information orthogonal to past realized
+    variance and materially improves out-of-sample forecasts.
+
+    Parameters
+    ----------
+    lags : tuple of int
+        Averaging windows. Default (1, 5, 22).
+    iv_column : str
+        Key in realized_measures holding implied volatility series.
+    log_transform : bool
+        If True, model in log space.
+
+    References
+    ----------
+    Prokopczuk, M., Symeonidis, L., Wese Simen, C. (2023).
+        "Forecasting realized volatility: the role of implied volatility,
+        leverage effect, overnight returns, and volatility of volatility."
+        Journal of Futures Markets.
+    Bekaert, G., Hoerova, M. (2014). "The VIX, the variance premium, and
+        stock market volatility." Journal of Econometrics.
+    """
+
+    def __init__(
+        self,
+        lags: tuple[int, ...] = (1, 5, 22),
+        iv_column: str = "IV",
+        log_transform: bool = False,
+    ) -> None:
+        self.lags = lags
+        self.iv_column = iv_column
+        self.log_transform = log_transform
+        self._beta: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._rv: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._iv: NDArray[np.float64] = np.array([], dtype=np.float64)
+        self._residual_var: float = 0.0
+        self._fitted = False
+
+    @property
+    def model_spec(self) -> ModelSpec:
+        return ModelSpec(
+            name="HAR-IV",
+            abbreviation="HARIV",
+            family="HAR",
+            target=VolatilityTarget.INTEGRATED_VARIANCE,
+            assumptions=(
+                "heterogeneous agents",
+                "implied volatility contains orthogonal forward-looking info",
+                "linear OLS",
+            ),
+            complexity="O(T) OLS",
+            reference="Prokopczuk, Symeonidis, Wese Simen (2023), J. Futures Markets",
+            extends=("HAR_RV",),
+        )
+
+    def fit(
+        self,
+        returns: NDArray[np.float64],
+        realized_measures: Optional[dict[str, NDArray[np.float64]]] = None,
+        **kwargs: Any,
+    ) -> "HARIVForecaster":
+        if realized_measures is None or "RV" not in realized_measures:
+            raise ValueError("HAR-IV requires 'RV' in realized_measures")
+        if self.iv_column not in realized_measures:
+            raise ValueError(
+                f"HAR-IV requires '{self.iv_column}' in realized_measures"
+            )
+
+        rv = np.asarray(realized_measures["RV"], dtype=np.float64)
+        iv = np.asarray(realized_measures[self.iv_column], dtype=np.float64)
+        if len(iv) != len(rv):
+            raise ValueError("IV and RV arrays must have the same length")
+
+        self._rv = rv.copy()
+        self._iv = iv.copy()
+
+        rv_work = np.log(np.maximum(rv, 1e-20)) if self.log_transform else rv
+        iv_work = np.log(np.maximum(iv, 1e-20)) if self.log_transform else iv
+
+        max_lag = max(self.lags)
+        X_har = _build_har_features(rv_work, self.lags)
+        iv_aligned = iv_work[max_lag:].reshape(-1, 1)
+        X = np.hstack([X_har, iv_aligned])
+        y = rv_work[max_lag:]
+
+        self._beta = _ols_fit(X, y)
+        pred_in = self._beta[0] + X @ self._beta[1:]
+        self._residual_var = float(np.var(y - pred_in))
+        self._fitted = True
+        return self
+
+    def predict(self, horizon: int = 1, **kwargs: Any) -> ForecastResult:
+        if not self._fitted:
+            raise RuntimeError("Model not fitted.")
+
+        rv = self._rv
+        iv = self._iv
+        rv_work = np.log(np.maximum(rv, 1e-20)) if self.log_transform else rv.copy()
+        iv_work = np.log(np.maximum(iv, 1e-20)) if self.log_transform else iv.copy()
+
+        forecasts = np.empty(horizon, dtype=np.float64)
+        rv_ext = rv_work.copy()
+        iv_ext = iv_work.copy()
+
+        for h in range(horizon):
+            T_curr = len(rv_ext)
+            x = np.empty(len(self.lags) + 1, dtype=np.float64)
+            for j, lag in enumerate(self.lags):
+                x[j] = np.mean(rv_ext[max(0, T_curr - lag):T_curr])
+            x[len(self.lags)] = iv_ext[-1]
+
+            pred = self._beta[0] + np.dot(self._beta[1:], x)
+
+            if self.log_transform:
+                forecasts[h] = np.exp(pred + 0.5 * self._residual_var)
+            else:
+                forecasts[h] = max(pred, 1e-20)
+
+            rv_ext = np.append(rv_ext, pred)
+            iv_ext = np.append(iv_ext, iv_ext[-1])
+
+        return ForecastResult(
+            point=forecasts,
+            target_spec=TargetSpec(
+                target=VolatilityTarget.INTEGRATED_VARIANCE,
+                horizon=horizon,
+            ),
+            model_name="HAR-IV",
+            metadata={
+                "beta": self._beta.tolist(),
+                "iv_column": self.iv_column,
+                "log_transform": self.log_transform,
+            },
+        )
+
+    def update(
+        self,
+        new_returns: NDArray[np.float64],
+        new_realized: Optional[dict[str, NDArray[np.float64]]] = None,
+        **kwargs: Any,
+    ) -> None:
+        if not self._fitted:
+            raise RuntimeError("Model not fitted.")
+        if new_realized is None or "RV" not in new_realized:
+            raise ValueError("Requires new_realized with 'RV'")
+        new_rv = np.asarray(new_realized["RV"], dtype=np.float64)
+        self._rv = np.concatenate([self._rv, new_rv])
+        if self.iv_column in new_realized:
+            new_iv = np.asarray(new_realized[self.iv_column], dtype=np.float64)
+        else:
+            new_iv = np.full(len(new_rv), self._iv[-1], dtype=np.float64)
+        self._iv = np.concatenate([self._iv, new_iv])
+
+    def get_params(self) -> dict[str, Any]:
+        if len(self._beta) == 0:
+            return {}
+        names = (
+            ["intercept"]
+            + [f"beta_lag{l}" for l in self.lags]
+            + [f"beta_{self.iv_column}"]
+        )
+        return dict(zip(names, self._beta.tolist()))

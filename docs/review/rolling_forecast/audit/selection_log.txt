@@ -1,0 +1,13 @@
+{
+  "primary_loss": "MSE",
+  "proxy_quality": "poor \u2014 rankings may be unreliable",
+  "mcs_survivors": [
+    "EWMA (RiskMetrics)",
+    "Component GARCH(1,1)"
+  ],
+  "eliminated": [
+    "GARCH(1,1)",
+    "ARCH(1)",
+    "FIGARCH(1,d,1)"
+  ]
+}

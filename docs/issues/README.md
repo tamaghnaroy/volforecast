@@ -6,19 +6,29 @@ This backlog reviews currently implemented forecasting algorithms and proposes m
 
 Implemented forecasters in `volforecast/models`:
 - **GARCH family:** ARCH(q), EWMA/RiskMetrics, GARCH(1,1), EGARCH, GJR-GARCH, APARCH, CGARCH, FIGARCH, HEAVY, Realized GARCH, GARCH-MIDAS
-- **HAR family:** HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR
+- **HAR family:** HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR, **HAR-IV** (issue 13)
 - **Stochastic Volatility:** SV (QML), SV-J (with jumps)
 - **Score-driven:** GAS(1,1) with Normal and Student-t
-- **Regime-switching:** Markov-Switching Volatility (K regimes)
+- **Regime-switching:** Markov-Switching Volatility (K regimes), **MSGARCH** (issue 18)
 - **Quantile:** CAViaR (SAV, Asymmetric Slope, Indirect GARCH)
-- **ML wrappers:** Random Forest, LSTM, Transformer (PyTorch optional)
+- **ML wrappers:** Random Forest, LSTM, Transformer (PyTorch optional), **DeepVol/dilated causal CNN** (issue 12)
+- **Multivariate:** **DCC-GARCH** (issue 10), **Copula-GARCH + EVT tails** (issue 15)
+- **Rough Volatility:** **rBergomi, Rough Heston** (issue 11)
+
+Realized measures in `volforecast/realized`:
+- RV, BV, MedRV, MinRV, TSRV, Pre-Averaging, Realized Semivariance
+- **Realized Kernel with Parzen, Bartlett, and cubic kernels + auto-BW** (issue 14)
+
+Evaluation tools in `volforecast/evaluation`:
+- MSE, QLIKE, MAE loss functions; Diebold-Mariano, MCS, Mincer-Zarnowitz tests
+- **Conformal Prediction Intervals** — `SplitConformalVol`, `OnlineConformalVol` (issue 17)
 
 Implemented combiners in `volforecast/combination`:
 - Equal Weight, Inverse MSE, AFTER, EWA, Fixed-Share, RL combiner
 
 ## Open issues
 
-None — all identified gaps have been addressed.
+None — all v1 and v2 identified gaps have been addressed.
 
 ## Done
 

@@ -4,6 +4,7 @@ Tests for evaluation framework: loss functions, statistical tests, proxy correct
 
 import numpy as np
 import pytest
+from scipy import stats
 
 from volforecast.evaluation.losses import (
     mse_loss,
@@ -17,6 +18,8 @@ from volforecast.evaluation.tests import (
     diebold_mariano_test,
     mincer_zarnowitz_test,
     model_confidence_set,
+    hit_rate_test,
+    dq_test,
 )
 from volforecast.evaluation.proxy import (
     estimate_noise_variance,
@@ -276,3 +279,156 @@ class TestProxyCorrection:
         assert result["adjusted_loss"] >= 0
         assert result["proxy_quality"] in ("excellent", "good", "moderate",
                                             "poor — rankings may be unreliable")
+
+
+# ─── Hit Rate / Coverage Tests ───
+
+class TestHitRateTest:
+    def _make_calibrated(self, tau=0.05, T=2000, seed=0):
+        """Generate returns and quantile forecasts with correct coverage."""
+        rng = np.random.default_rng(seed)
+        returns = rng.normal(0, 0.01, size=T)
+        # Exact normal quantile at tau — gives empirical rate ≈ tau
+        q = np.full(T, rng.normal(0, 0.01, size=T).mean() + np.percentile(returns, tau * 100))
+        # Use time-varying but correctly calibrated quantiles
+        vol = 0.01
+        q = np.full(T, stats.norm.ppf(tau, loc=0, scale=vol))
+        returns = rng.normal(0, vol, size=T)
+        return returns, q
+
+    def test_result_fields(self):
+        rng = np.random.default_rng(0)
+        T = 500
+        returns = rng.normal(0, 0.01, T)
+        q = np.full(T, -0.016)
+        result = hit_rate_test(returns, q, tau=0.05)
+        assert hasattr(result, "tau")
+        assert hasattr(result, "hit_rate")
+        assert hasattr(result, "uc_statistic")
+        assert hasattr(result, "uc_pvalue")
+        assert hasattr(result, "ind_statistic")
+        assert hasattr(result, "ind_pvalue")
+        assert hasattr(result, "cc_statistic")
+        assert hasattr(result, "cc_pvalue")
+        assert hasattr(result, "n_hits")
+        assert hasattr(result, "n_obs")
+
+    def test_hit_rate_in_range(self):
+        rng = np.random.default_rng(1)
+        returns = rng.normal(0, 0.01, 1000)
+        q = np.full(1000, -0.02)
+        result = hit_rate_test(returns, q, tau=0.05)
+        assert 0.0 <= result.hit_rate <= 1.0
+
+    def test_n_obs_correct(self):
+        rng = np.random.default_rng(2)
+        returns = rng.normal(0, 0.01, 300)
+        q = np.full(300, -0.02)
+        result = hit_rate_test(returns, q, tau=0.05)
+        assert result.n_obs == 300
+        assert result.n_hits == int(np.sum(returns < q))
+
+    def test_pvalues_in_range(self):
+        rng = np.random.default_rng(3)
+        returns = rng.normal(0, 0.01, 500)
+        q = np.full(500, -0.016)
+        result = hit_rate_test(returns, q, tau=0.05)
+        assert 0.0 <= result.uc_pvalue <= 1.0
+        assert 0.0 <= result.ind_pvalue <= 1.0
+        assert 0.0 <= result.cc_pvalue <= 1.0
+
+    def test_statistics_non_negative(self):
+        rng = np.random.default_rng(4)
+        returns = rng.normal(0, 0.01, 500)
+        q = np.full(500, -0.016)
+        result = hit_rate_test(returns, q, tau=0.05)
+        assert result.uc_statistic >= 0.0
+        assert result.ind_statistic >= 0.0
+        assert result.cc_statistic >= 0.0
+
+    def test_cc_equals_uc_plus_ind(self):
+        rng = np.random.default_rng(5)
+        returns = rng.normal(0, 0.01, 500)
+        q = np.full(500, -0.016)
+        result = hit_rate_test(returns, q, tau=0.05)
+        assert np.isclose(result.cc_statistic, result.uc_statistic + result.ind_statistic)
+
+    def test_calibrated_forecast_not_rejected(self):
+        """A correctly calibrated forecast should not reject UC at 1% level."""
+        returns, q = self._make_calibrated(tau=0.05, T=3000, seed=99)
+        result = hit_rate_test(returns, q, tau=0.05)
+        # With exact normal quantile, UC should not be rejected at 1%
+        assert result.uc_pvalue > 0.01
+
+    def test_miscalibrated_forecast_rejected(self):
+        """A badly miscalibrated forecast (tau=0.05 but actual 25%) should reject UC."""
+        rng = np.random.default_rng(7)
+        returns = rng.normal(0, 0.01, 2000)
+        # Quantile set at 25th percentile but claiming 5%
+        q = np.full(2000, np.percentile(returns, 25))
+        result = hit_rate_test(returns, q, tau=0.05)
+        assert result.uc_pvalue < 0.01
+
+    def test_tau_stored_correctly(self):
+        rng = np.random.default_rng(8)
+        returns = rng.normal(0, 0.01, 200)
+        q = np.full(200, -0.02)
+        result = hit_rate_test(returns, q, tau=0.10)
+        assert result.tau == 0.10
+
+
+# ─── Dynamic Quantile Test ───
+
+class TestDQTest:
+    def test_result_fields(self):
+        rng = np.random.default_rng(10)
+        returns = rng.normal(0, 0.01, 300)
+        q = np.full(300, -0.016)
+        result = dq_test(returns, q, tau=0.05, n_lags=4)
+        assert hasattr(result, "statistic")
+        assert hasattr(result, "p_value")
+        assert hasattr(result, "n_lags")
+        assert hasattr(result, "df")
+
+    def test_df_equals_n_lags_plus_2(self):
+        rng = np.random.default_rng(11)
+        returns = rng.normal(0, 0.01, 300)
+        q = np.full(300, -0.016)
+        for n_lags in (1, 4, 8):
+            result = dq_test(returns, q, tau=0.05, n_lags=n_lags)
+            assert result.df == n_lags + 2
+            assert result.n_lags == n_lags
+
+    def test_statistic_non_negative(self):
+        rng = np.random.default_rng(12)
+        returns = rng.normal(0, 0.01, 500)
+        q = np.full(500, -0.016)
+        result = dq_test(returns, q, tau=0.05)
+        assert result.statistic >= 0.0
+
+    def test_pvalue_in_range(self):
+        rng = np.random.default_rng(13)
+        returns = rng.normal(0, 0.01, 500)
+        q = np.full(500, -0.016)
+        result = dq_test(returns, q, tau=0.05)
+        assert 0.0 <= result.p_value <= 1.0
+
+    def test_calibrated_iid_not_rejected(self):
+        """i.i.d. hits from correct quantile should not reject at 1%."""
+        rng = np.random.default_rng(14)
+        T = 3000
+        vol = 0.01
+        returns = rng.normal(0, vol, T)
+        q = np.full(T, stats.norm.ppf(0.05, 0, vol))
+        result = dq_test(returns, q, tau=0.05, n_lags=4)
+        assert result.p_value > 0.01
+
+    def test_constant_quantile_different_lags(self):
+        """dq_test should run without error for different n_lags."""
+        rng = np.random.default_rng(15)
+        returns = rng.normal(0, 0.01, 400)
+        q = np.full(400, -0.02)
+        for n_lags in (1, 2, 6):
+            result = dq_test(returns, q, tau=0.05, n_lags=n_lags)
+            assert np.isfinite(result.statistic)
+            assert np.isfinite(result.p_value)

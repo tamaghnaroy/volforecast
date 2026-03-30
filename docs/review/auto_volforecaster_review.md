@@ -1,0 +1,35 @@
+# AutoVolForecaster Review
+
+## Findings
+
+1. The proposal's "intraday optional" path is incompatible with the current benchmarking API, so the advertised `no intraday` flow will fail as written. The design treats `intraday_returns` as optional in the profiler/public API ([auto_volforecaster.md:55](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L55), [auto_volforecaster.md:266](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L266)), but `BenchmarkRunner.run()` requires a concrete `intraday_returns` array and immediately computes RV/BV/RS from it ([runner.py:118](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/benchmark/runner.py#L118), [runner.py:121](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/benchmark/runner.py#L121), [runner.py:142](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/benchmark/runner.py#L142)). Unless the auto-forecaster bypasses `BenchmarkRunner` or first extends it to accept precomputed realized measures, the "short series, no intraday" milestone is not implementable.
+
+2. The fail-safe behavior in the doc does not match the current runner, and that can corrupt model ranking. The design says failed models are "silently dropped" with a guaranteed GARCH fallback ([auto_volforecaster.md:18](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L18)), but `BenchmarkRunner` currently keeps failed models in the suite and fills their OOS forecast with the previous day's RV on fit failure ([runner.py:189](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/benchmark/runner.py#L189)). That means a model that never fit can still survive DM/MCS screening on the strength of a fallback proxy-based forecast, which is a behavioral bug for an "auto-select best model" pipeline.
+
+3. The proposed `CombinedForecaster.update()` order is logically wrong for the existing online combiners. The doc says `update(new_returns, new_realized)` should first update all component forecasters and then call `combiner.update(forecasts, realization)` ([auto_volforecaster.md:224](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L224)). But the combiner contract is explicitly: combine expert forecasts, observe the realization, then update weights using those same forecasts ([online.py:6](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/combination/online.py#L6), [online.py:54](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/combination/online.py#L54), [online.py:74](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/combination/online.py#L74)). Updating experts first either loses the period-`t` forecast vector or forces you to score post-update forecasts against period-`t` realizations, which is look-ahead contamination.
+
+4. Phase 4 references evaluation APIs that do not exist in the current codebase under those signatures, so the selection logic is underspecified against real interfaces. The doc calls `diebold_mariano_test(..., loss_fn="QLIKE")` and refers to `SNR < 1` from `proxy_noise_correction` ([auto_volforecaster.md:158](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L158), [auto_volforecaster.md:159](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L159), [auto_volforecaster.md:176](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L176), [auto_volforecaster.md:179](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L179)), but `diebold_mariano_test` accepts two loss series plus `horizon/significance` only ([tests.py:92](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/evaluation/tests.py#L92)), `model_confidence_set` expects a single `(T, M)` loss matrix ([tests.py:300](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/evaluation/tests.py#L300)), and `proxy_noise_correction` returns `signal_to_noise_ratio` and `proxy_quality`, not `SNR` ([proxy.py:223](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/evaluation/proxy.py#L223), [proxy.py:285](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/evaluation/proxy.py#L285)). This is fixable, but the doc should be rewritten to the actual call surface before implementation starts.
+
+## Open Questions
+
+- The public API exposes `loss_fn: str = "QLIKE"` ([auto_volforecaster.md:255](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L255)), but the combination section says the combiner always updates on QLIKE ([auto_volforecaster.md:218](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L218)). That parameter currently reads as partly decorative.
+- The doc says `GARCHMIDASForecaster` should depend on macro/low-frequency regressors ([auto_volforecaster.md:121](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L121), [auto_volforecaster.md:351](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/docs/issues/auto_volforecaster.md#L351)), but the implementation currently builds its low-frequency driver from rolling squared returns internally ([midas.py:146](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/models/midas.py#L146), [midas.py:147](C:/Users/tamaghna%20roy/CascadeProjects/windsurf-project-3/volforecast/models/midas.py#L147)). The selector criteria should match the actual model, or the model needs redesign first.
+
+## Change Summary
+
+The proposal is directionally sound, but it is not yet aligned with the repo's current interfaces. The highest-risk gaps are the no-intraday path, failure handling in benchmarking, and the online-combination update semantics.
+
+## Implementation Notes
+
+**FIXED** — All findings have been addressed:
+
+1. **BenchmarkRunner intraday optional** — `run()` now accepts `intraday_returns: Optional` and `precomputed_realized: Optional[dict]`. Either must be provided. The "no intraday" flow is now implementable by passing pre-computed realized measures.
+
+2. **BenchmarkRunner fail-safe** — Changed from RV fallback to proper exclusion. Failed models (fit/update/predict) are added to `failed_models: set[str]` and excluded from final results instead of being ranked on fallback forecasts.
+
+3. **CombinedForecaster update order** — Document corrected to reflect the proper combiner contract: combine forecasts → observe realization → update weights. Component models are updated separately during the prediction cycle, not in `update()`.
+
+4. **API signatures** — Document updated:
+   - `proxy_noise_correction` uses `signal_to_noise_ratio` (not `SNR`)
+   - `diebold_mariano_test(losses1, losses2, horizon, significance)` — loss series pre-computed
+   - `model_confidence_set(loss_matrix, alpha)` — takes `(T, M)` matrix
