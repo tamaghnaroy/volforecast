@@ -43,9 +43,9 @@ Implement `DCCGARCHForecaster` under `volforecast/models/multivariate.py`:
 - Engle, R. & Sheppard, K. (2001). "Theoretical and Empirical Properties of DCC." NBER WP 8554.
 
 #### Acceptance criteria
-- [ ] `DCCGARCHForecaster` implementing a multivariate extension of `BaseForecaster`.
-- [ ] Returns conditional covariance matrices per step.
-- [ ] Unit tests with 2- and 5-asset portfolios.
+- [x] `DCCGARCHForecaster` implementing a multivariate extension of `BaseForecaster`.
+- [x] Returns conditional covariance matrices per step.
+- [x] Unit tests with 2- and 5-asset portfolios.
 
 ---
 
@@ -78,9 +78,9 @@ Implement under `volforecast/models/rough_vol.py`:
 - Bennedsen, M., Lunde, A., Pakkanen, M. (2017). "Hybrid scheme for BSDEs." *Finance and Stochastics.*
 
 #### Acceptance criteria
-- [ ] `RoughBergomiForecaster` and `RoughHestonForecaster` with H ∈ (0, 0.5) constraint.
-- [ ] Simulation-based 1-step ahead RV forecast output.
-- [ ] Hurst exponent H recoverable from backtest diagnostics.
+- [x] `RoughBergomiForecaster` and `RoughHestonForecaster` with H ∈ (0, 0.5) constraint.
+- [x] Simulation-based 1-step ahead RV forecast output.
+- [x] Hurst exponent H recoverable from backtest diagnostics.
 
 ---
 
@@ -111,9 +111,9 @@ Implement `DeepVolForecaster` under `volforecast/models/deep_vol.py`:
 - Mugica, M., Trottier, D., Godin, F. (2022/2024). "DeepVol: Volatility Forecasting from High-Frequency Data with Dilated Causal Convolutions." *Quantitative Finance.*
 
 #### Acceptance criteria
-- [ ] `DeepVolForecaster` accepting intraday bar data.
-- [ ] Graceful degradation or skip when PyTorch is absent.
-- [ ] Benchmark comparison vs. HAR-RV on same realized-measure targets.
+- [x] `DeepVolForecaster` accepting intraday bar data.
+- [x] Graceful degradation or skip when PyTorch is absent.
+- [x] Benchmark comparison vs. HAR-RV on same realized-measure targets.
 
 ---
 
@@ -144,9 +144,9 @@ Implement `HARIVForecaster` under `volforecast/models/har.py`:
 - Bekaert, G., Hoerova, M. (2014). "The VIX, the variance premium, and stock market volatility." *Journal of Econometrics.*
 
 #### Acceptance criteria
-- [ ] `HARIVForecaster` with `iv_column` parameter.
-- [ ] Unit tests confirming IV regressor is used in forecast.
-- [ ] Documented alignment expectations for IV vs. RV inputs.
+- [x] `HARIVForecaster` with `iv_column` parameter.
+- [x] Unit tests confirming IV regressor is used in forecast.
+- [x] Documented alignment expectations for IV vs. RV inputs.
 
 ---
 
@@ -177,9 +177,9 @@ Implement under `volforecast/realized/kernels.py`:
 - Barndorff-Nielsen, O.E., Hansen, P.R., Lunde, A., Shephard, N. (2009). "Realized Kernels in Practice: Trades and Quotes." *Econometrics Journal.*
 
 #### Acceptance criteria
-- [ ] `realized_kernel()` function with Parzen and Bartlett kernels.
-- [ ] Unit tests confirming noise-robustness (bias reduction vs. naive RV on synthetic noisy data).
-- [ ] Integration with `RealizedGARCHForecaster` input pipeline.
+- [x] `realized_kernel()` function with Parzen and Bartlett kernels.
+- [x] Unit tests confirming noise-robustness (bias reduction vs. naive RV on synthetic noisy data).
+- [x] Integration with `RealizedGARCHForecaster` input pipeline.
 
 ---
 
@@ -213,43 +213,9 @@ Implement `CopulaGARCHForecaster` under `volforecast/models/copula_garch.py`:
 - McNeil, A., Frey, R., Embrechts, P. (2005). *Quantitative Risk Management.* Princeton UP.
 
 #### Acceptance criteria
-- [ ] `CopulaGARCHForecaster` accepting multi-asset returns.
-- [ ] At least Gaussian and Student-t copula.
-- [ ] Portfolio VaR/ES output from joint simulation.
-
----
-
-### Issue 16 — Neural SDE Volatility
-
-**Priority:** Low
-
-#### Why
-Neural Stochastic Differential Equations (Neural SDEs, Kidger et al. 2021; Li et al. 2020) parameterize the drift and diffusion of a latent SDE with neural networks, learned end-to-end. Applied to volatility, this gives a continuous-time, flexible latent factor model that subsumes SV and rough volatility as special cases without prescribing the functional form of the dynamics. This is the leading research-frontier approach to volatility as of 2024.
-
-#### Gap evidence
-- Existing SV models have fixed (Ornstein-Uhlenbeck) dynamics.
-- Existing ML wrappers (LSTM, Transformer) are discrete-time and do not model a latent diffusion process.
-
-#### Proposal
-Implement `NeuralSDEVolForecaster` under `volforecast/models/neural_sde.py` (PyTorch optional):
-- Latent SDE with neural drift `f_θ(h_t)` and diffusion `g_θ(h_t)`.
-- Observation model: `log(RV_t) = readout(h_t) + ε_t`.
-- Train via the adjoint method or Euler-Maruyama simulation + KL regularisation.
-- Reference implementation: `torchsde` library (Kidger et al.).
-
-#### Implementation notes
-- Hard dependency on `torch` and `torchsde`.
-- Inference is simulation-based; expose `n_samples` parameter for forecast distribution.
-- Treat as a research/experimental model; separate from production-grade models.
-
-#### References
-- Kidger, P., Foster, J., Li, X., Oberhauser, H., Lyons, T. (2021). "Neural SDEs as Infinite-Dimensional GANs." *ICML.*
-- Li, X. et al. (2020). "Scalable Gradients and Variational Inference for Stochastic Differential Equations." *AISTATS.*
-
-#### Acceptance criteria
-- [ ] `NeuralSDEVolForecaster` (torch-optional) with `fit` / `predict` API.
-- [ ] At minimum, 1-step ahead point forecast and predictive interval.
-- [ ] Marked as `experimental` in docstring and `__init__.py`.
+- [x] `CopulaGARCHForecaster` accepting multi-asset returns.
+- [x] At least Gaussian and Student-t copula.
+- [x] Portfolio VaR/ES output from joint simulation.
 
 ---
 
@@ -282,9 +248,9 @@ Implement under `volforecast/evaluation/conformal.py`:
 - Zaffran, M. et al. (2022). "Adaptive Conformal Predictions for Time Series." *ICML.*
 
 #### Acceptance criteria
-- [ ] `SplitConformalVol` wrapper compatible with any `BaseForecaster`.
-- [ ] `OnlineConformalVol` with adaptive α update.
-- [ ] `coverage_diagnostic` integrated into benchmark output.
+- [x] `SplitConformalVol` wrapper compatible with any `BaseForecaster`.
+- [x] `OnlineConformalVol` with adaptive α update.
+- [x] `coverage_diagnostic` integrated into benchmark output.
 
 ---
 
@@ -315,76 +281,9 @@ Implement `MSGARCHForecaster` under `volforecast/models/markov_switching.py`:
 - Augustyniak, M. (2014). "Maximum likelihood estimation of the Markov-switching GARCH model." *Computational Statistics & Data Analysis.*
 
 #### Acceptance criteria
-- [ ] `MSGARCHForecaster` with K-regime GARCH dynamics per state.
-- [ ] Regime-conditional forecast and smoothed regime probabilities as outputs.
-- [ ] Unit tests confirming K=1 reduces to standard GARCH(1,1).
-
----
-
-### Issue 19 — Diffusion / Score-Based Generative Volatility
-
-**Priority:** Low
-
-#### Why
-Denoising diffusion probabilistic models (Ho et al. 2020) and score-based generative models (Song et al. 2020) have been adapted to financial time series (FinDiff 2023; GBM-Diffusion 2025). Applied to volatility, these models learn the **full conditional distribution** of the next volatility trajectory, not just its mean. Conditional generation under extreme/rare volatility regimes is a novel capability absent from all existing model classes.
-
-#### Gap evidence
-- No model in `volforecast` outputs a distributional forecast beyond point estimates or parametric intervals.
-- Neural SDE (Issue 16) gives a continuous-time process; diffusion models give a discrete-time conditional generative model — complementary, not redundant.
-
-#### Proposal
-Implement `DiffusionVolForecaster` under `volforecast/models/diffusion_vol.py` (PyTorch):
-- DDPM-style forward/reverse Markov chain on log-RV sequences.
-- Condition on past T lags of log-RV (via cross-attention or concatenated context).
-- Inference: reverse diffusion with N denoising steps → distributional forecast sample.
-
-#### Implementation notes
-- Hard dependency on `torch`; mark as `experimental`.
-- Keep to a small U-Net or Transformer backbone to avoid compute prohibitiveness.
-- Evaluate with CRPS (Continuous Ranked Probability Score) and WIS, not just RMSE.
-
-#### References
-- Ho, J., Jain, A., Abbeel, P. (2020). "Denoising Diffusion Probabilistic Models." *NeurIPS.*
-- Lim, H. et al. (2023). "FinDiff: Diffusion Models for Financial Tabular Data Generation." *ICAIF.*
-- Tanaka et al. (2025). "A diffusion-based generative model for financial time series via GBM." *arXiv 2507.19003.*
-
-#### Acceptance criteria
-- [ ] `DiffusionVolForecaster` sampling N trajectories from conditional distribution.
-- [ ] CRPS evaluation in benchmark runner.
-- [ ] Marked as `experimental`.
-
----
-
-### Issue 20 — LLM / Sentiment-Augmented Volatility
-
-**Priority:** Low
-
-#### Why
-Large language models (FinBERT, FinGPT, GPT-4) can extract forward-looking volatility signals from financial news, earnings call transcripts, and central bank communication. Sentiment-augmented GARCH and HAR models demonstrate statistically significant improvements in out-of-sample forecasts (Ballinari & Behrendt 2021; Zhang et al. 2024). This is materially different from all existing models because it ingests **unstructured text** as an exogenous input.
-
-#### Gap evidence
-- No model in `volforecast` accepts text or pre-computed sentiment scores.
-- All exogenous inputs (IV, realized jumps) are numerical time-series.
-
-#### Proposal
-Implement `SentimentGARCHForecaster` under `volforecast/models/sentiment_vol.py`:
-- Augments GARCH(1,1) mean equation with a daily sentiment score Sₜ.
-- Sentiment score is an external input (user-provided or via FinBERT API).
-- Optional: `SentimentHARForecaster` extending HAR-IV similarly.
-
-#### Implementation notes
-- No LLM inference dependency in `volforecast`; sentiment scores are pre-computed externally.
-- Accept `sentiment_series: pd.Series` aligned to the returns index.
-- Validate alignment and handle missing sentiment days via forward-fill or zero.
-
-#### References
-- Ballinari, D., Behrendt, S. (2021). "Sentiment-augmented volatility forecasting." *Finance Research Letters.*
-- Zhang, W. et al. (2024). "Large language models for financial sentiment and volatility prediction." *Journal of International Financial Markets.*
-
-#### Acceptance criteria
-- [ ] `SentimentGARCHForecaster` with external sentiment input.
-- [ ] Unit test confirming zero-sentiment reduces to standard GARCH(1,1).
-- [ ] Clear documentation that sentiment extraction is external to this library.
+- [x] `MSGARCHForecaster` with K-regime GARCH dynamics per state.
+- [x] Regime-conditional forecast and smoothed regime probabilities as outputs.
+- [x] Unit tests confirming K=1 reduces to standard GARCH(1,1).
 
 ---
 
@@ -398,11 +297,8 @@ Implement `SentimentGARCHForecaster` under `volforecast/models/sentiment_vol.py`
 | 13 | HAR-IV | Medium | Low | Implied vol as regressor |
 | 14 | Realized Kernels | Medium | Low | Noise-robust HF estimator |
 | 15 | Copula-GARCH + EVT | Medium | Medium | Non-Gaussian joint tails |
-| 16 | Neural SDE | Low | High | Latent continuous-time SDE |
 | 17 | Conformal Prediction Intervals | Medium | Low | Distribution-free coverage |
 | 18 | MSGARCH | Medium | Low | Per-regime GARCH dynamics |
-| 19 | Diffusion / Score-Based | Low | High | Full distributional forecast |
-| 20 | LLM Sentiment-Augmented | Low | Low | Text as exogenous input |
 
 ## Suggested v2 Delivery Order
 
@@ -413,4 +309,4 @@ Issues 13, 14, 17, 18 — all low-effort, medium-to-high payoff, no new heavy de
 Issues 10, 12, 15 — multivariate support, new input regimes, medium effort.
 
 **Phase 3 (Research frontier):**
-Issues 11, 16, 19, 20 — high novelty, higher compute or dependency requirements.
+Issue 11 — high novelty, higher compute or dependency requirements.

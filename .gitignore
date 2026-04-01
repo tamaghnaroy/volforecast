@@ -47,3 +47,5 @@ __pycache__/
 
 # Agent/debate artifacts
 agent/
+docs/
+!docs/exploration/

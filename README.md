@@ -9,17 +9,17 @@ All models implement a shared `BaseForecaster` interface with explicit target de
 
 | Family | Models | Target | Reference |
 |--------|--------|--------|-----------|
-| **GARCH** | ARCH(q), EWMA/RiskMetrics, GARCH, EGARCH, GJR-GARCH, APARCH, CGARCH, Realized GARCH | Conditional Variance | Bollerslev (1986), Nelson (1991), GJR (1993), Hansen et al. (2012) |
-| **Long-memory** | FIGARCH | Conditional Variance | Baillie, Bollerslev, Mikkelsen (1996) |
-| **Realized** | HEAVY | Conditional Variance | Shephard & Sheppard (2010) |
-| **MIDAS** | GARCH-MIDAS | Conditional Variance | Engle, Ghysels, Sohn (2013) |
-| **HAR** | HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR | Integrated Variance / Continuous Variation | Corsi (2009), Andersen et al. (2007), Patton & Sheppard (2015) |
+| **GARCH** | ARCH(q), EWMA/RiskMetrics, GARCH, EGARCH, GJR-GARCH, APARCH, CGARCH, Realized GARCH, FIGARCH, GARCH-MIDAS | Conditional Variance | Bollerslev (1986), Nelson (1991), GJR (1993), Hansen et al. (2012), Baillie et al. (1996), Engle et al. (2013) |
+| **HAR** | HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR, HAR-IV | Integrated Variance / Continuous Variation | Corsi (2009), Andersen et al. (2007), Patton & Sheppard (2015), Prokopczuk et al. (2023) |
 | **SV** | SV (QML), SV-J (with jumps) | Conditional Variance | Taylor (1986), Harvey et al. (1994), Bates (1996) |
 | **GAS** | GAS(1,1)-Normal, GAS(1,1)-Student-t | Conditional Variance | Creal, Koopman, Lucas (2013) |
-| **Regime** | Markov-Switching Volatility (K regimes) | Conditional Variance | Hamilton & Susmel (1994), Gray (1996) |
+| **Regime** | Markov-Switching Volatility, MSGARCH (K regimes) | Conditional Variance | Hamilton & Susmel (1994), Gray (1996), Haas et al. (2004) |
 | **Quantile** | CAViaR (SAV, Asymmetric Slope, Indirect GARCH) | Conditional Quantile | Engle & Manganelli (2004) |
-| **ML** | Random Forest, LSTM, Transformer | Conditional Variance | Breiman (2001), Hochreiter & Schmidhuber (1997) |
+| **ML** | Random Forest, LSTM, Transformer, DeepVol | Conditional Variance | Breiman (2001), Hochreiter & Schmidhuber (1997), Mugica et al. (2024) |
+| **Multivariate** | DCC-GARCH, Copula-GARCH (Gaussian, Student-t, Clayton, Gumbel) | Conditional Covariance | Engle (2002), Joe (2014) |
+| **Rough Vol** | Rough Bergomi, Rough Heston | Integrated Variance | Gatheral et al. (2018), El Euch & Rosenbaum (2019) |
 | **Combination** | Equal Weight, Inverse MSE, AFTER, EWA, Fixed-Share, RL-PPO | Any | Yang (2004), Vovk (1990), Herbster & Warmuth (1998) |
+| **Interval** | Conformal Prediction (Split, Online) | Distribution-free Intervals | Vovk et al. (2005), Gibbs & Candès (2021) |
 
 ### Numba-Optimized Realized Measures
 - **RV** — Realized Variance (Andersen et al., 2003)
@@ -43,6 +43,7 @@ All models implement a shared `BaseForecaster` interface with explicit target de
 - **Mincer-Zarnowitz** efficiency regression
 - **Proxy noise correction**: attenuation bias correction, Hansen-Lunde adjustment
 - **Explicit forecast-target mismatch** treatment
+- **Conformal prediction intervals**: distribution-free coverage guarantees for volatility forecasts
 
 ### Volatility Target Taxonomy
 The library explicitly distinguishes:
@@ -217,16 +218,20 @@ volforecast/
 │   └── jumps.py    # BNS test, C/J decomposition
 ├── models/         # Forecaster implementations
 │   ├── garch.py    # ARCH, EWMA, GARCH, EGARCH, GJR, APARCH, CGARCH
-│   ├── har.py      # HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR
+│   ├── har.py      # HAR-RV, HAR-RV-J, HAR-RV-CJ, SHAR, HAR-IV
 │   ├── realized_garch.py
 │   ├── figarch.py  # FIGARCH (long-memory)
 │   ├── heavy.py    # HEAVY (realized-measure driven)
 │   ├── sv.py       # SV (QML), SV-J (with jumps)
 │   ├── gas.py      # GAS/DCS score-driven volatility
-│   ├── markov_switching.py  # MS-Vol (K regimes)
+│   ├── markov_switching.py  # MS-Vol, MSGARCH (K regimes)
 │   ├── midas.py    # GARCH-MIDAS (short/long-run)
 │   ├── caviar.py   # CAViaR quantile models
-│   └── ml_wrappers.py  # RF, LSTM, Transformer
+│   ├── ml_wrappers.py  # RF, LSTM, Transformer
+│   ├── deep_vol.py    # DeepVol (dilated causal CNN)
+│   ├── multivariate.py   # DCC-GARCH
+│   ├── copula_garch.py   # Copula-GARCH with EVT tails
+│   ├── rough_vol.py   # Rough Bergomi, Rough Heston
 ├── combination/    # Online aggregation & RL
 │   ├── online.py   # EW, InvMSE, AFTER, EWA, Fixed-Share
 │   └── rl_combiner.py
