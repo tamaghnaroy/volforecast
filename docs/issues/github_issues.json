@@ -1,0 +1,38 @@
+[
+  {
+    "title": "Add ARCH(q) and EWMA/RiskMetrics baseline forecasters",
+    "body": "## Why\nARCH and EWMA are foundational cvol benchmarks used in empirical comparisons.\n\n## Proposal\n- Add `ARCHForecaster(q=1..p)`\n- Add `EWMAForecaster(lambda_=0.94 or estimated)`\n- Both should implement `BaseForecaster` targeting `CONDITIONAL_VARIANCE`\n\n## Acceptance criteria\n- [ ] New forecaster classes with tests for fit/predict/update\n- [ ] Added to model registry/docs\n- [ ] Included in benchmark examples\n\nReference draft: `docs/issues/issue-01-arch-ewma-baselines.md`."
+  },
+  {
+    "title": "Implement FIGARCH forecaster for long-memory volatility",
+    "body": "## Why\nFIGARCH is a canonical long-memory cvol model and appears in the knowledge graph, but is not executable in models code.\n\n## Proposal\nAdd `FIGARCHForecaster` with robust parameter constraints and forecast positivity safeguards.\n\n## Acceptance criteria\n- [ ] FIGARCH class implementing BaseForecaster API\n- [ ] Unit tests for constraints + positivity\n- [ ] Benchmark/docs integration\n\nReference draft: `docs/issues/issue-02-figarch.md`."
+  },
+  {
+    "title": "Implement HEAVY model with realized measures",
+    "body": "## Why\nHEAVY is a distinct realized-measure-driven framework and key comparator to Realized GARCH.\n\n## Proposal\nAdd `HEAVYForecaster` with daily returns + realized measure input (`RV` by default).\n\n## Acceptance criteria\n- [ ] fit/predict/update support\n- [ ] Tests on synthetic realized-data DGP\n- [ ] Docs + benchmark recipe\n\nReference draft: `docs/issues/issue-03-heavy.md`."
+  },
+  {
+    "title": "Add Stochastic Volatility family (SV, SV-J)",
+    "body": "## Why\nSV models are foundational latent-state alternatives to GARCH and currently absent as runnable forecasters.\n\n## Proposal\nImplement `SVForecaster` and `SVJForecaster` with at least one inference backend (particle filter / quasi-MLE / Bayesian).\n\n## Acceptance criteria\n- [ ] BaseForecaster-compatible SV implementation\n- [ ] Optional jump variant\n- [ ] Reproducible synthetic-SV tests\n\nReference draft: `docs/issues/issue-04-stochastic-volatility.md`."
+  },
+  {
+    "title": "Implement score-driven (GAS/DCS) volatility models",
+    "body": "## Why\nGAS provides a structurally different observation-driven class via score updates of the conditional density.\n\n## Proposal\nAdd `GASVolForecaster` supporting Normal and Student-t innovations.\n\n## Acceptance criteria\n- [ ] fit/predict/update API\n- [ ] Stability + positivity tests\n- [ ] Docs on GAS vs GARCH usage\n\nReference draft: `docs/issues/issue-05-gas.md`."
+  },
+  {
+    "title": "Add Markov-switching volatility models",
+    "body": "## Why\nRegime changes (calm/crisis) are not captured by single-regime models and are important for cvol forecasting.\n\n## Proposal\nAdd `MSGARCHForecaster` or `MSVolForecaster` with 2+ latent regimes and Hamilton filter/EM inference.\n\n## Acceptance criteria\n- [ ] One-step and multi-step forecasts\n- [ ] Synthetic regime-recovery tests\n- [ ] Benchmarks showing stress-period behavior\n\nReference draft: `docs/issues/issue-06-markov-switching.md`."
+  },
+  {
+    "title": "Implement MIDAS volatility models (GARCH-MIDAS / HAR-MIDAS)",
+    "body": "## Why\nMIDAS bridges short-run and long-run components with low-frequency predictors for horizon-specific cvol forecasting.\n\n## Proposal\nImplement `GARCHMIDASForecaster` first, with optional follow-up `HARMIDASForecaster`.\n\n## Acceptance criteria\n- [ ] At least one MIDAS model with constraints\n- [ ] Tests with synthetic low-frequency drivers\n- [ ] Example for horizon-specific forecasts\n\nReference draft: `docs/issues/issue-07-midas.md`."
+  },
+  {
+    "title": "Add quantile-native volatility/risk methods (CAViaR)",
+    "body": "## Why\nVariance-only forecasts miss tail-risk use cases; CAViaR introduces conditional quantile dynamics.\n\n## Proposal\nAdd `CAViaRForecaster` variants and evaluation hooks for quantile calibration.\n\n## Acceptance criteria\n- [ ] CAViaR model + quantile coverage tests\n- [ ] Evaluation utilities for quantile diagnostics\n- [ ] Docs clarifying complementarity with variance models\n\nReference draft: `docs/issues/issue-08-caviar.md`."
+  },
+  {
+    "title": "Add executable ML volatility wrappers (LSTM/Transformer/RF)",
+    "body": "## Why\nKnowledge graph/docs mention LSTM/Transformer/RF methods but no runnable forecasters currently exist in `volforecast.models`.\n\n## Proposal\nAdd `LSTMVolForecaster`, `TransformerVolForecaster`, and `RFVolForecaster` with deterministic defaults and clear feature contracts.\n\n## Acceptance criteria\n- [ ] Models exported in `volforecast.models`\n- [ ] CI-friendly smoke tests\n- [ ] Docs mark these as experimental vs econometric baselines\n\nReference draft: `docs/issues/issue-09-ml-wrappers.md`."
+  }
+]
